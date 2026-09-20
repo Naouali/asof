@@ -11,10 +11,12 @@ third party's uptime or on today's market data.
 | `binance_exchangeinfo.json` | **Recorded live** 2026-09-20, trimmed to four symbols (the full payload is ~2 MB of filter definitions). One symbol is in `BREAK` status to exercise the delisting path. |
 | `stooq_challenge.html` | **Recorded live** 2026-09-20. The JavaScript proof-of-work interstitial Stooq now serves instead of CSV. |
 | `stooq_aapl_sample.csv` | Hand-constructed in Stooq's documented CSV format, since the live endpoint no longer serves CSV. Tests the parser, not the transport. |
-| `fred_observations_dgs10.json` | **Hand-constructed** from the documented response shape. No free FRED key was available when Milestone 2 was built. |
-| `alfred_observations_gdpc1.json` | **Hand-constructed** from the documented vintage response shape. Models one GDP quarter revised twice — the case the vintage machinery exists for. |
+| `fred_observations_dgs10.json` | **Recorded live** 2026-09-20. DGS10, 2024-01-01 → 2024-01-08. Contains a New Year's Day `"."`, FRED's encoding for a missing observation. |
+| `alfred_observations_gdpc1.json` | **Recorded live** 2026-09-20. Real GDP across 2020 H1 over the full real-time window: 17 rows covering two quarters, 2020 Q1 alone carrying nine vintages from the advance estimate to a revision five years later. |
 
-The two hand-constructed FRED fixtures are the weakest link in this directory:
-they assert that our parser handles the shape the documentation describes, not the
-shape the API actually returns. Re-record both against the live API once a key is
-configured, and delete this paragraph.
+The two FRED fixtures were hand-constructed from the published response shape
+until a key was configured, and have now been re-recorded. The parser needed no
+change — the documented shape was the real one — but one test did: it asserted
+exactly three vintages of 2020 Q1, because the invented payload had three. The
+live payload has nine. That assertion was pinned to fabricated data and is now
+pinned to a property that survives the next annual revision.

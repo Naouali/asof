@@ -122,15 +122,62 @@ def _check_data_root(settings: Settings) -> Check:
 
 def _check_user_agent(settings: Settings) -> Check:
     ua = settings.http_user_agent
-    if "unconfigured" in ua:
+    problem = _user_agent_problem(ua)
+    if problem is not None:
         return Check(
             "http_user_agent",
             Status.WARN,
-            "User-Agent is not configured",
-            "SEC EDGAR rejects requests without a descriptive User-Agent carrying "
-            "contact details. Set QUANTLAB_HTTP_USER_AGENT before ingesting fundamentals.",
+            problem,
+            "The SEC's fair-access policy requires a User-Agent carrying real "
+            "contact details so they can reach you about your traffic. A "
+            "placeholder address is worse than none: it is a fabricated identity "
+            "in a compliance header. Set QUANTLAB_HTTP_USER_AGENT to something "
+            "like 'QuantLab/0.1 (you@yourdomain.com)' before ingesting EDGAR.",
         )
     return Check("http_user_agent", Status.OK, ua)
+
+
+#: Addresses and fragments that appear in templates and documentation. Shipping
+#: any of them to the SEC claims a contact that does not exist.
+_PLACEHOLDER_MARKERS = (
+    "unconfigured",
+    "example.com",
+    "example.org",
+    "example.net",
+    "your.name",
+    "yourname",
+    "your-email",
+    "youremail",
+    "your.email",
+    "user@",
+    "test@",
+    "foo@",
+    "bar@",
+    "none@",
+    "noreply@",
+    "no-reply@",
+    "changeme",
+    "todo",
+)
+
+
+def _user_agent_problem(ua: str) -> str | None:
+    """Why this User-Agent is not usable for SEC EDGAR, or ``None`` if it is.
+
+    Copying ``.env.example`` unchanged is the documented setup path, and it
+    leaves ``your.name@example.com`` in place. Matching only the word
+    "unconfigured" passed that as configured, which is how a placeholder address
+    reaches the SEC looking like a real one.
+    """
+    lowered = ua.lower()
+    for marker in _PLACEHOLDER_MARKERS:
+        if marker in lowered:
+            return f"User-Agent still carries the placeholder {marker!r}"
+
+    local, _, domain = lowered.partition("@")
+    if not local or "." not in domain:
+        return "User-Agent carries no contact email address"
+    return None
 
 
 def _check_sources(settings: Settings) -> Check:

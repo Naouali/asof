@@ -422,9 +422,23 @@ not a number fitted to real fills. The models are correct; whether they are
 spread estimators have been validated against simulation, where the answer is
 known, but not against live equity quotes, which are not free.
 
-**FRED and ALFRED.** No free FRED key was available, so neither fetcher has been
-run against the live API. Their guard rails are tested, and their parsers are
-tested against fixtures **hand-constructed from the published response shape**
-rather than recorded — which asserts that the parser handles the documented shape,
-not the actual one. Re-record both fixtures once a key is configured; this is
-flagged in `tests/fixtures/README.md`.
+**FRED and ALFRED — now verified (2026-09-20).** A key was configured and both
+fetchers were run against the live API: 115,314 FRED rows and 28,075 ALFRED rows.
+The hand-constructed fixtures have been replaced with recorded payloads. The
+parser needed no change, but one test did — it asserted exactly three vintages of
+2020 Q1 because the invented fixture had three, where the live payload has nine.
+
+The vintage machinery was verified end to end on real revision history. Of the
+ALFRED observations in the lake, 2,614 carry more than one vintage and in every
+one of those the value changed. Real GDP for 2020 Q2 reads:
+
+| Snapshot taken | GDPC1 for 2020 Q2 |
+| --- | --- |
+| 2020-09-01 | 17,282.2 |
+| 2021-06-01 | 17,302.5 |
+| 2026-09-20 | 19,078.0 |
+
+The first print was 17,205.8 and today's figure is 10.9% higher. A snapshot sees
+only the vintage that existed at its instant, which is the entire purpose of the
+`known_at` contract. (The 2023 jump is a benchmark re-basing rather than a data
+revision, so levels are not comparable across it; growth rates are.)

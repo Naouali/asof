@@ -1,13 +1,118 @@
 {
-  "_comment": "HAND-CONSTRUCTED from the documented ALFRED response shape (realtime_start/realtime_end per observation when a wide real-time window is requested). Not recorded from the live API -- no free FRED key was available when Milestone 2 was built. The values model a real pattern: one quarter's GDP published as an advance estimate and revised twice, which is exactly the case the vintage machinery exists to handle.",
   "realtime_start": "1776-07-04",
   "realtime_end": "9999-12-31",
+  "observation_start": "2020-01-01",
+  "observation_end": "2020-06-30",
+  "units": "lin",
+  "output_type": 1,
+  "file_type": "json",
+  "order_by": "observation_date",
+  "sort_order": "asc",
+  "count": 17,
+  "offset": 0,
+  "limit": 100000,
   "observations": [
-    {"realtime_start": "2020-04-29", "realtime_end": "2020-05-27", "date": "2020-01-01", "value": "18987.8"},
-    {"realtime_start": "2020-05-28", "realtime_end": "2020-06-24", "date": "2020-01-01", "value": "18952.0"},
-    {"realtime_start": "2020-06-25", "realtime_end": "9999-12-31", "date": "2020-01-01", "value": "18951.9"},
-    {"realtime_start": "2020-07-30", "realtime_end": "2020-08-26", "date": "2020-04-01", "value": "17204.7"},
-    {"realtime_start": "2020-08-27", "realtime_end": "9999-12-31", "date": "2020-04-01", "value": "17258.2"},
-    {"realtime_start": "2020-10-29", "realtime_end": "9999-12-31", "date": "2020-07-01", "value": "18596.5"}
+    {
+      "realtime_start": "2020-04-29",
+      "realtime_end": "2020-05-27",
+      "date": "2020-01-01",
+      "value": "18987.877"
+    },
+    {
+      "realtime_start": "2020-05-28",
+      "realtime_end": "2020-06-24",
+      "date": "2020-01-01",
+      "value": "18974.702"
+    },
+    {
+      "realtime_start": "2020-06-25",
+      "realtime_end": "2020-07-29",
+      "date": "2020-01-01",
+      "value": "18977.363"
+    },
+    {
+      "realtime_start": "2020-07-30",
+      "realtime_end": "2021-07-28",
+      "date": "2020-01-01",
+      "value": "19010.848"
+    },
+    {
+      "realtime_start": "2021-07-29",
+      "realtime_end": "2022-09-28",
+      "date": "2020-01-01",
+      "value": "18951.992"
+    },
+    {
+      "realtime_start": "2022-09-29",
+      "realtime_end": "2023-09-27",
+      "date": "2020-01-01",
+      "value": "18989.877"
+    },
+    {
+      "realtime_start": "2023-09-28",
+      "realtime_end": "2024-09-25",
+      "date": "2020-01-01",
+      "value": "20665.553"
+    },
+    {
+      "realtime_start": "2024-09-26",
+      "realtime_end": "2025-09-24",
+      "date": "2020-01-01",
+      "value": "20693.238"
+    },
+    {
+      "realtime_start": "2025-09-25",
+      "realtime_end": "9999-12-31",
+      "date": "2020-01-01",
+      "value": "20709.212"
+    },
+    {
+      "realtime_start": "2020-07-30",
+      "realtime_end": "2020-08-26",
+      "date": "2020-04-01",
+      "value": "17205.822"
+    },
+    {
+      "realtime_start": "2020-08-27",
+      "realtime_end": "2020-09-29",
+      "date": "2020-04-01",
+      "value": "17282.188"
+    },
+    {
+      "realtime_start": "2020-09-30",
+      "realtime_end": "2021-07-28",
+      "date": "2020-04-01",
+      "value": "17302.511"
+    },
+    {
+      "realtime_start": "2021-07-29",
+      "realtime_end": "2022-09-28",
+      "date": "2020-04-01",
+      "value": "17258.205"
+    },
+    {
+      "realtime_start": "2022-09-29",
+      "realtime_end": "2023-09-27",
+      "date": "2020-04-01",
+      "value": "17378.712"
+    },
+    {
+      "realtime_start": "2023-09-28",
+      "realtime_end": "2024-09-25",
+      "date": "2020-04-01",
+      "value": "19034.83"
+    },
+    {
+      "realtime_start": "2024-09-26",
+      "realtime_end": "2025-09-24",
+      "date": "2020-04-01",
+      "value": "19056.617"
+    },
+    {
+      "realtime_start": "2025-09-25",
+      "realtime_end": "9999-12-31",
+      "date": "2020-04-01",
+      "value": "19077.992"
+    }
   ]
 }

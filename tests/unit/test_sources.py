@@ -272,9 +272,25 @@ def test_alfred_sets_known_at_to_the_vintage_start(monkeypatch: pytest.MonkeyPat
 
     assert frame["vintage"].all()
     q1 = frame.filter(pl.col("as_of") == dt.datetime(2020, 1, 1, tzinfo=dt.UTC)).sort("known_at")
-    assert q1.height == 3, "three vintages of the same quarter"
+
+    # Nine vintages of 2020 Q1 in the recorded payload -- the advance estimate
+    # and eight revisions, the last of them five years later. The count is not
+    # asserted: it grows every September when the annual revision lands, and a
+    # test that has to be edited each year for a correct parser is noise.
+    assert q1.height > 3, "a GDP quarter is revised many times"
+
+    # known_at is the vintage's realtime_start: the day that value became the
+    # published figure. Getting this wrong is what makes a macro backtest trade
+    # on numbers that did not exist yet.
     assert q1["known_at"].to_list()[0] == dt.datetime(2020, 4, 29, tzinfo=dt.UTC)
-    assert q1["value"].to_list() == [18987.8, 18952.0, 18951.9]
+    assert q1["value"].to_list()[0] == pytest.approx(18987.877)
+
+    # Every vintage is distinct and ordered, and the revisions are material:
+    # the advance estimate of 2020 Q1 is roughly 9% below the current figure.
+    assert q1["known_at"].is_sorted()
+    assert q1["known_at"].n_unique() == q1.height
+    first, last = q1["value"].to_list()[0], q1["value"].to_list()[-1]
+    assert abs(last / first - 1.0) > 0.05
 
 
 def test_series_policy_covers_every_default_symbol() -> None:

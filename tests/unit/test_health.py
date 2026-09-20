@@ -4,7 +4,13 @@ import pytest
 
 from quantlab.config import Settings, get_settings
 from quantlab.data.catalogue import SOURCES
-from quantlab.health import Status, run_checks, source_availability
+from quantlab.health import (
+    Status,
+    _check_user_agent,
+    _user_agent_problem,
+    run_checks,
+    source_availability,
+)
 
 
 def test_checks_never_raise_and_never_fail_on_a_bare_install(settings: Settings) -> None:
@@ -55,3 +61,48 @@ def test_unwritable_data_root_is_a_failure(
 def test_availability_dict_carries_caveats_to_the_ui(settings: Settings) -> None:
     for item in source_availability(settings):
         assert item.as_dict()["caveats"] == list(item.spec.caveats)
+
+
+# ----------------------------------------------------------------------------------
+# The SEC contact address
+# ----------------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "user_agent",
+    [
+        "QuantLab/0.1 (unconfigured -- set QUANTLAB_HTTP_USER_AGENT)",
+        "QuantLab/0.1 (your.name@example.com)",  # .env.example, copied unchanged
+        "QuantLab/0.1 (youremail@gmail.com)",
+        "QuantLab/0.1 (test@company.com)",
+        "QuantLab/0.1 (noreply@company.com)",
+        "QuantLab/0.1 (changeme@company.com)",
+        "QuantLab/0.1",  # no address at all
+        "QuantLab/0.1 (someone@localhost)",  # no domain dot
+    ],
+)
+def test_a_placeholder_contact_address_is_not_configured(user_agent: str) -> None:
+    """Copying `.env.example` unchanged is the documented setup path, and it
+    leaves a placeholder behind. Passing that as configured is how a fabricated
+    contact address reaches the SEC looking like a real one."""
+    assert _user_agent_problem(user_agent) is not None
+
+
+@pytest.mark.parametrize(
+    "user_agent",
+    [
+        "QuantLab/0.1 (ada@lovelace.org)",
+        "QuantLab/0.1 (research@some-fund.co.uk)",
+        "quantlab/0.1 (a.b+c@sub.domain.io)",
+    ],
+)
+def test_a_real_contact_address_passes(user_agent: str) -> None:
+    assert _user_agent_problem(user_agent) is None
+
+
+def test_the_check_explains_why_a_placeholder_is_worse_than_nothing() -> None:
+    settings = Settings(http_user_agent="QuantLab/0.1 (your.name@example.com)")
+    check = _check_user_agent(settings)
+
+    assert check.status is Status.WARN
+    assert "placeholder" in check.detail
+    assert check.hint is not None
+    assert "fabricated identity" in check.hint
