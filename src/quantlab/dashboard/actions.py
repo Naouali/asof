@@ -222,6 +222,55 @@ def run_backtest(config_path: str) -> dict[str, Any]:
     return {"ok": True, **data}
 
 
+def saved_strategies() -> dict[str, Any]:
+    """Every stored backtest, for the comparison view.
+
+    Returns the honest columns alongside the flattering one. A screen that
+    ranked three strategies by Sharpe without the trial count and the
+    disqualification beside it would be the most misleading thing this platform
+    could render.
+    """
+    from quantlab.reporting.results_store import ResultsStore
+
+    store = ResultsStore(get_settings().layout.runs / "results")
+    return {"strategies": store.summary()}
+
+
+def saved_strategy(name: str) -> dict[str, Any]:
+    """One stored backtest in full: curve, panels, warnings."""
+    from quantlab.reporting.results_store import ResultsStore
+
+    run = ResultsStore(get_settings().layout.runs / "results").load(name)
+    if run is None:
+        return {"ok": False, "error": f"no saved result for {name!r}"}
+    return {"ok": True, **run}
+
+
+def lake_summary() -> dict[str, Any]:
+    """What is actually in the lake, per dataset."""
+    store = _store()
+    try:
+        stats = store.stats()
+    except (OSError, ValueError) as exc:  # pragma: no cover - empty lake
+        log.warning("dashboard.lake_unreadable", error=str(exc))
+        return {"datasets": []}
+    return {
+        "datasets": [
+            {
+                "dataset": row.dataset,
+                "source": row.source,
+                "asset_class": row.asset_class,
+                "rows": row.rows,
+                "symbols": row.symbols,
+                "megabytes": round(row.bytes / 1e6, 1),
+                "earliest": str(row.first_as_of)[:10],
+                "latest": str(row.last_as_of)[:10],
+            }
+            for row in stats
+        ]
+    }
+
+
 def trial_summary() -> dict[str, Any]:
     """The running trial count, which a browser makes it much easier to inflate."""
     from quantlab.validation.registry import TrialRegistry

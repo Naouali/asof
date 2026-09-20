@@ -207,6 +207,24 @@ def create_app() -> FastAPI:
             {"sources": [a.as_dict() for a in source_availability()], "count": len(SOURCES)}
         )
 
+    @app.get("/api/strategies")
+    def api_strategies() -> JSONResponse:
+        from quantlab.dashboard.actions import saved_strategies
+
+        return JSONResponse(saved_strategies())
+
+    @app.get("/api/strategies/{name}")
+    def api_strategy(name: str) -> JSONResponse:
+        from quantlab.dashboard.actions import saved_strategy
+
+        return JSONResponse(saved_strategy(name))
+
+    @app.get("/api/lake/summary")
+    def api_lake_summary() -> JSONResponse:
+        from quantlab.dashboard.actions import lake_summary
+
+        return JSONResponse(lake_summary())
+
     @app.get("/api/signals")
     def api_signals() -> JSONResponse:
         from quantlab.dashboard.actions import available_signals

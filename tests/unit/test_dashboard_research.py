@@ -15,6 +15,16 @@ from fastapi.testclient import TestClient
 from quantlab.dashboard.app import _parse_parameters, _symbol_list, create_app
 
 
+def page(client: TestClient) -> str:
+    """The research page with whitespace normalised.
+
+    Assertions are about what the page *says*, not about where a line happened
+    to wrap in the template. Matching raw source makes a reflow look like a
+    regression.
+    """
+    return " ".join(client.get("/research").text.split())
+
+
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(create_app())
@@ -30,20 +40,19 @@ def test_the_research_page_serves(client: TestClient) -> None:
 def test_the_page_states_that_nothing_is_routed(client: TestClient) -> None:
     """Spec section 1. It belongs where someone using the tool will read it, not
     only in a docstring."""
-    assert "no live order routing" in client.get("/research").text
+    assert "No live order routing" in page(client)
 
 
 def test_the_sweep_panel_warns_before_the_search_not_after(client: TestClient) -> None:
     """A caveat shown after the result is one the reader has already formed an
     opinion past."""
-    page = client.get("/research").text
-    assert "Every cell is a trial" in page
-    assert "54%" in page, "the measured false-positive rate of a naive read"
+    body = page(client)
+    assert "Every cell is a trial" in body
+    assert "54% of the time" in body, "the measured false-positive rate of a naive read"
 
 
 def test_the_trials_panel_explains_why_it_exists(client: TestClient) -> None:
-    page = client.get("/research").text
-    assert "cheaper to try one more idea" in page
+    assert "cheaper to try one more idea" in page(client)
 
 
 # -------------------------------------------------------------------- api --
@@ -119,3 +128,60 @@ def test_a_malformed_axis_rejects_the_whole_grid() -> None:
 def test_values_are_coerced_to_numbers() -> None:
     grid = _parse_parameters("a=1,2\nb=0.5\nc=text")
     assert grid == {"a": [1, 2], "b": [0.5], "c": ["text"]}
+
+
+# ------------------------------------------------------- the comparison view --
+def test_strategies_are_listed_with_what_makes_them_comparable(client: TestClient) -> None:
+    """A screen ranking three strategies by Sharpe without the trial count and
+    the disqualification beside it would be the most misleading thing this
+    platform could render."""
+    payload = client.get("/api/strategies").json()
+    assert "strategies" in payload
+    for row in payload["strategies"]:
+        assert {"deflated_sharpe", "trials", "is_disqualified", "warnings"} <= set(row)
+
+
+def test_a_disqualified_strategy_cannot_hide_below_the_fold(client: TestClient) -> None:
+    """The list is ordered so a failing strategy is not quietly ranked beneath
+    the ones a reader is comparing."""
+    from quantlab.reporting.results_store import ResultsStore
+
+    runs = ResultsStore(__import__("pathlib").Path("data/runs/results")).all()
+    if len(runs) > 1:
+        flags = [r.is_disqualified for r in runs]
+        assert flags == sorted(flags, reverse=True) or len(set(flags)) == 1
+
+
+def test_a_missing_strategy_is_a_clean_error(client: TestClient) -> None:
+    body = client.get("/api/strategies/not-a-run").json()
+    assert body["ok"] is False
+    assert "no saved result" in body["error"]
+
+
+def test_the_lake_summary_reports_span_not_just_size(client: TestClient) -> None:
+    """Row counts say nothing about whether the history is usable."""
+    payload = client.get("/api/lake/summary").json()
+    for row in payload["datasets"]:
+        assert {"rows", "symbols", "earliest", "latest"} <= set(row)
+
+
+def test_the_page_leads_with_deflation_not_with_sharpe(client: TestClient) -> None:
+    """What a reader sees first is what they take away."""
+    body = page(client)
+    assert "Ranked by deflated Sharpe" in body
+    assert "0.95 is the bar" in body
+    assert "the gap between them is" in body
+
+
+def test_the_page_states_the_measured_false_positive_rate(client: TestClient) -> None:
+    body = page(client)
+    assert "54% of the time" in body
+    assert "one cell in 2,800" in body
+
+
+def test_charts_are_drawn_without_a_network_dependency(client: TestClient) -> None:
+    """Offline-capable is a platform requirement, not a nicety. A chart library
+    from a CDN would break the whole page on a plane."""
+    body = page(client)
+    assert "https://" not in body
+    assert "lineChart" in body and "barChart" in body, "charts are hand-rolled SVG"

@@ -36,6 +36,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from quantlab.backtest.config import RunConfig
     from quantlab.backtest.panel import Panel
     from quantlab.backtest.results import BacktestResult
+    from quantlab.reporting.results_store import ResultsStore
 
 app = typer.Typer(
     name="quantlab",
@@ -868,6 +869,32 @@ def signals_run(
     )
 
 
+def _store_results() -> ResultsStore:
+    from quantlab.reporting.results_store import ResultsStore
+
+    return ResultsStore(get_settings().layout.runs / "results")
+
+
+def _save_result(run: RunConfig, panel: Panel, result: BacktestResult, config: Path) -> None:
+    """Persist a finished run so the dashboard can compare it without re-running.
+
+    Failure here never fails the backtest: a result that cannot be cached is
+    still a result, and losing the run because the cache directory is read-only
+    would be absurd.
+    """
+    from quantlab.reporting import Tearsheet, TearsheetError, caveats_for, sources_behind
+    from quantlab.reporting.capacity import capacity_for
+
+    try:
+        keys = [run.source] if run.source else list(sources_behind([run.dataset]))
+        sheet = Tearsheet.build(
+            result, capacity=capacity_for(result, panel), caveats=caveats_for(keys)
+        )
+        _store_results().save(sheet, config_path=str(config))
+    except (TearsheetError, ValueError, KeyError, OSError) as exc:
+        log.warning("cli.result_not_cached", name=result.name, error=str(exc)[:200])
+
+
 def _load_and_run(
     config: Path, *, record_trial: bool = True
 ) -> tuple[RunConfig, Panel, BacktestResult]:
@@ -950,7 +977,8 @@ def backtest(
     `as_of`, so re-running later sees the same data rather than whatever the lake
     has learned since.
     """
-    run, _panel, result = _load_and_run(config)
+    run, panel, result = _load_and_run(config)
+    _save_result(run, panel, result, config)
 
     console.print(result.summary())
     console.print()
@@ -1306,6 +1334,7 @@ def report(
         err_console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from None
 
+    _store_results().save(sheet, config_path=str(config))
     rendered = {"text": to_text, "markdown": to_markdown, "html": to_html}[fmt](sheet)
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
