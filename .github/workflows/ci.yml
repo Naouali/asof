@@ -45,9 +45,17 @@ jobs:
 
       - name: Tests
         # Integration tests need a Docker daemon and are run in the `stack` job.
+        # Slow tests -- the backtest throughput target -- are excluded here and run
+        # in their own job, so a slow machine does not fail the fast feedback loop.
         run: >-
-          uv run pytest -m "not integration"
+          uv run pytest -m "not integration and not slow"
           --cov --cov-report=term-missing --cov-report=xml
+
+      - name: Golden backtest fixture is current
+        run: uv run python scripts/gen_backtest_golden.py --check
+
+      - name: Throughput target (30 years x 3,000 names under 10s)
+        run: uv run pytest -m "slow" -v
 
       - uses: actions/upload-artifact@v4
         if: always()

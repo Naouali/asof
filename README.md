@@ -97,6 +97,24 @@ Flat costs are roughly right for the small trades a researcher tests on and wild
 optimistic at deployment size, which makes every strategy look scalable and every
 capacity estimate infinite.
 
+## Running a backtest
+
+```bash
+quantlab backtest --config configs/backtest_example.yaml
+```
+
+The config's `as_of` fixes the point-in-time snapshot the run reads, so re-running
+months later sees the same data — and the same vintage of any restated series —
+rather than whatever the lake has learned since.
+
+What the engine enforces rather than assumes: signal on the close of T traded at
+the open of T+1; forward-fill capped at a configured limit; a delisting return
+applied when an instrument vanishes; calendar-day financing accrual; and
+cash-and-position accounting reconciled every bar by two independent routes, with
+a breach stopping the run.
+
+A 30-year, 3,000-name backtest with full costs runs in about 7 seconds.
+
 ## Layout
 
 ```
@@ -124,11 +142,12 @@ number you might act on lives in `src/` with a test.
 
 ## Status
 
-Milestones 1–3 of 12 complete: repository skeleton, Docker stack and CI; the data
+Milestones 1–4 of 12 complete: repository skeleton, Docker stack and CI; the data
 layer — parquet lake, point-in-time snapshots, trading calendars and eight fetchers
-across Yahoo, Binance and FRED/ALFRED; and the cost models — square-root impact,
+across Yahoo, Binance and FRED/ALFRED; the cost models — square-root impact,
 Almgren-Chriss scheduling, spread estimation with its bias problem documented,
-financing and borrow, and the capacity calculator.
+financing and borrow, and the capacity calculator; and the vectorised backtest
+engine with its accounting identities enforced every bar.
 
 Commands whose implementation lands in a later milestone exit non-zero naming that
 milestone, rather than returning an empty result that could be mistaken for a

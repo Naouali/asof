@@ -181,7 +181,26 @@ There is no order routing, by design. The gap between a paper-trading loop and l
 execution — queue position, partial fills at your actual broker, borrow
 availability on the day, operational failure — is large and is not simulated here.
 
-## 7. Capacity is a ceiling, not a plan
+## 7. What the vectorised engine does not model
+
+It is a *research* engine. It answers "was there an edge here, net of costs", and
+it deliberately does not answer "could this have been executed":
+
+- **Fills are assumed.** Every order fills completely, at the configured price,
+  with cost charged as a deduction. There are no partial fills, no rejects, no
+  queue position and no latency. The event-driven engine (Milestone 10) is what
+  tests whether a vectorised result survives realistic execution, and a strategy
+  going to paper trading must clear it first.
+- **Splits are not handled.** The engine consumes an already-split-adjusted price
+  series and requires dividends on the same basis. Mixing bases misstates every
+  total return by the split factor, and nothing detects it.
+- **Borrow availability is not modelled.** A short is assumed to be borrowable at
+  the configured fee, always. Recalls and forced buy-ins are real costs that appear
+  nowhere.
+- **Cash earns nothing and there is no margin call.** A strategy that would have
+  been liquidated by its broker runs to the end here.
+
+## 8. Capacity is a ceiling, not a plan
 
 The break-even AUM assumes the impact model is right, the ADV forecast is right,
 and that trading is spread across the universe in proportion to weights. All three
@@ -196,7 +215,7 @@ degrade in the direction of *less* capacity:
 - Crowding is not modelled at all. If others hold the same position, your exit is
   correlated with theirs and impact is worse than any single-trader model says.
 
-## 8. The point-in-time guarantee has a hard edge
+## 9. The point-in-time guarantee has a hard edge
 
 `Snapshot` makes look-ahead bias structurally unavailable **for data that is in the
 lake**. It cannot help with the two harder cases:
@@ -210,7 +229,7 @@ lake**. It cannot help with the two harder cases:
   ETFs that still exist in 2026 is a survivorship-biased universe no matter how
   correct the timestamps are.
 
-## 9. What "reproducible" means here
+## 10. What "reproducible" means here
 
 A given commit plus a given *data snapshot* produces identical results. It does not
 mean re-running ingest reproduces the snapshot: Yahoo restates adjusted closes,

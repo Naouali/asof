@@ -535,10 +535,87 @@ def costs_capacity(
 
 @app.command()
 def backtest(
-    config: Annotated[Path, typer.Option("--config", "-c", help="Strategy YAML.")],
+    config: Annotated[Path, typer.Option("--config", "-c", help="Run config YAML.")],
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write the equity curve here.")
+    ] = None,
 ) -> None:
-    """Run a backtest from a strategy config."""
-    _not_yet(f"backtest --config {config}", 4, "the vectorised backtest engine")
+    """Run a backtest from a config.
+
+    Reads market data through a point-in-time snapshot fixed by the config's
+    `as_of`, so re-running later sees the same data rather than whatever the lake
+    has learned since.
+    """
+    from quantlab.backtest import Panel, VectorisedBacktest
+    from quantlab.backtest.config import load_run_config
+    from quantlab.backtest.prepare import panel_frame
+    from quantlab.data.store import Store
+
+    if not config.exists():
+        err_console.print(f"[red]no run config at {config}[/red]")
+        raise typer.Exit(code=2)
+
+    run = load_run_config(config)
+    if not run.weights_path.exists():
+        err_console.print(
+            f"[red]no weights file at {run.weights_path}[/red]\n"
+            "A backtest needs target weights. Milestone 6 generates them from the "
+            "signal library; until then, write a parquet or csv with columns "
+            "symbol, as_of, weight."
+        )
+        raise typer.Exit(code=2)
+
+    snapshot = Store(get_settings().layout).as_of(run.as_of)
+    bars = snapshot.frame(
+        run.dataset, symbols=list(run.symbols), start=run.start, source=run.source
+    )
+    if bars.height == 0:
+        err_console.print(
+            f"[red]no data for those symbols at as-of {run.as_of}[/red]\n"
+            "Run `quantlab data ingest` first, or widen the window."
+        )
+        raise typer.Exit(code=2)
+
+    keep = [
+        c
+        for c in ("symbol", "as_of", "close", "open", "volume", "high", "low")
+        if c in bars.columns
+    ]
+    frame = panel_frame(
+        bars.select(keep),
+        window=run.liquidity_window,
+        spread_bps=run.spread_bps,
+        estimate_spreads=run.estimate_spreads,
+    )
+    panel = Panel.from_frame(frame, timing=run.engine.execution, staleness=run.engine.staleness)
+
+    weights = (
+        pl.read_parquet(run.weights_path)
+        if run.weights_path.suffix == ".parquet"
+        else pl.read_csv(run.weights_path, try_parse_dates=True)
+    )
+    result = VectorisedBacktest(run.engine, run.cost_model()).run(panel, weights, name=run.name)
+
+    console.print(result.summary())
+    console.print()
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("cost component")
+    table.add_column("bp/yr", justify="right")
+    for component, value in sorted(
+        result.cost_decomposition_bps_annual().items(), key=lambda kv: -kv[1]
+    ):
+        table.add_row(component, f"{value:.1f}")
+    console.print(table)
+    console.print(
+        f"\n[dim]point-in-time as of {run.as_of}; "
+        f"{result.data_quality['symbols']} instruments, "
+        f"{result.data_quality['forward_filled_cells']:,} forward-filled cells[/dim]"
+    )
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        result.curve.write_parquet(output)
+        console.print(f"[green]wrote[/green] {output}")
 
 
 @app.command()

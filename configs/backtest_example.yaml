@@ -1,0 +1,42 @@
+# An example backtest run.
+#
+#   quantlab backtest --config configs/backtest_example.yaml
+#
+# `as_of` is the field that makes this reproducible: it fixes the point-in-time
+# snapshot the run reads, so re-running months later sees the same data -- and the
+# same vintage of any restated series -- rather than whatever the lake has learned
+# since. Change it deliberately, not to refresh the data.
+
+name: etf-momentum-12-1
+as_of: "2026-09-18"
+start: "2010-01-01"
+dataset: ohlcv_daily
+source: yahoo
+
+symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ]
+
+# Target weights: a parquet or csv with symbol, as_of, weight. Weights are dated
+# on the bar they are COMPUTED on; the engine applies the execution lag itself, so
+# pre-lagging them here would double-count it.
+weights: ../data/runs/etf_momentum_weights.parquet
+
+# No free source quotes US equity spreads, so this is an assumption, not a
+# measurement. Low-frequency estimators are available but are a last resort -- on
+# liquid instruments they measure daily volatility rather than spread. See
+# docs/LIMITATIONS.md.
+spread_bps: 3.0
+liquidity_window: 63
+
+engine:
+  initial_equity: 10_000_000
+  execution: next_open        # signal on the close of T, traded at the open of T+1
+  max_staleness_bars: 5
+  delisting_return: -0.30
+  borrow_bps_annual: 180      # 15 bp/month, the platform's punitive default
+  financing_bps_annual: 550
+  commission_bps: 0.5
+
+impact:
+  y: 0.5
+  delta: 0.5
+  permanent_fraction: 0.5

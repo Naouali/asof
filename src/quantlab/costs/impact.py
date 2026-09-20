@@ -155,6 +155,31 @@ class SquareRootImpact:
         """Whether this order is beyond the range the law was calibrated on."""
         return self.participation(notional, adv_notional) > self.params.max_reliable_participation
 
+    def cost_bps_array(
+        self,
+        notional: np.ndarray,
+        adv_notional: np.ndarray,
+        volatility_daily: np.ndarray,
+        horizon_days: float = 1.0,
+    ) -> np.ndarray:
+        """Numpy counterpart of :meth:`cost_bps`, for the backtest engine's loop.
+
+        A third implementation of the same formula is a liability, so a test
+        asserts all three -- scalar, polars and numpy -- agree. The engine needs
+        this one because its bar loop is a recursion in numpy, and dropping into
+        polars per bar would cost more than the arithmetic does.
+        """
+        params = self.params
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rate = np.where(adv_notional > 0, notional / adv_notional, 0.0)
+        peak = params.y * volatility_daily * np.power(rate, params.delta) / BPS
+        permanent = params.permanent_fraction * peak
+        temporary = (
+            (1.0 - params.permanent_fraction) * peak * (1.0 / horizon_days) ** params.urgency
+        )
+        result: np.ndarray = np.nan_to_num(temporary + permanent / 2.0, nan=0.0)
+        return result
+
     # -------------------------------------------------------------- vectorised --
     def cost_bps_expr(
         self,

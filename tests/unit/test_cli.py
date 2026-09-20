@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
+import polars as pl
 import pytest
 from typer.testing import CliRunner
 
@@ -56,7 +58,6 @@ def test_catalogue_detail_shows_caveats() -> None:
 @pytest.mark.parametrize(
     ("argv", "milestone"),
     [
-        (["backtest", "--config", "configs/x.yaml"], "Milestone 4"),
         (["paper"], "Milestone 11"),
     ],
 )
@@ -219,3 +220,88 @@ def test_costs_capacity_fails_loudly_when_a_strategy_never_pays() -> None:
     )
     assert result.exit_code == 1
     assert "no viable capacity" in result.output
+
+
+def test_backtest_without_a_config_fails_loudly() -> None:
+    result = runner.invoke(app, ["backtest", "--config", "/nope/run.yaml"])
+    assert result.exit_code == 2
+    assert "no run config" in result.output
+
+
+def test_backtest_without_weights_explains_what_is_missing(tmp_path: Path, repo_root: Path) -> None:
+    """Until Milestone 6 generates weights from signals, they come from a file.
+    The error has to say so rather than just reporting a missing path."""
+    config = tmp_path / "run.yaml"
+    config.write_text("name: t\nas_of: '2024-01-05'\nsymbols: [AAPL]\nweights: missing.parquet\n")
+    result = runner.invoke(app, ["backtest", "--config", str(config)])
+    assert result.exit_code == 2
+    assert "Milestone 6" in result.output
+
+
+def test_backtest_on_an_empty_lake_says_to_ingest(tmp_path: Path) -> None:
+    runner.invoke(app, ["init"])
+    weights = tmp_path / "w.parquet"
+    pl.DataFrame(
+        {"symbol": ["AAPL"], "as_of": [dt.datetime(2024, 1, 4, tzinfo=dt.UTC)], "weight": [1.0]}
+    ).write_parquet(weights)
+    config = tmp_path / "run.yaml"
+    config.write_text(f"name: t\nas_of: '2024-01-05'\nsymbols: [AAPL]\nweights: {weights.name}\n")
+    result = runner.invoke(app, ["backtest", "--config", str(config)])
+    assert result.exit_code == 2
+    assert "data ingest" in result.output
+
+
+def test_backtest_runs_end_to_end(tmp_path: Path, store: object) -> None:
+    """Lake to snapshot to panel to ledger, through the CLI.
+
+    Builds its own 60-session lake rather than reusing the three-bar fixture: the
+    trailing liquidity statistics need a warm-up, so a three-bar panel has nothing
+    left to trade and the smoke test would prove only that nothing crashed.
+    """
+    import numpy as np
+    from tests.conftest import bar
+
+    rng = np.random.default_rng(3)
+    sessions = [dt.date(2024, 1, 2) + dt.timedelta(days=i) for i in range(60)]
+    rows = []
+    for symbol, drift in (("AAPL", 0.001), ("MSFT", -0.0005)):
+        price = 100.0
+        for session in sessions:
+            price *= float(np.exp(rng.normal(drift, 0.01)))
+            row = bar(symbol, session, price)
+            row["volume"] = 5_000_000.0
+            rows.append(row)
+    store.write(  # type: ignore[attr-defined]
+        pl.DataFrame(rows).drop("volume").with_columns(volume=pl.lit(5_000_000.0)),
+        asset_class="equity",
+    )
+
+    weights = tmp_path / "w.parquet"
+    pl.DataFrame(
+        {
+            "symbol": ["AAPL", "MSFT"] * 2,
+            "as_of": [
+                dt.datetime(s.year, s.month, s.day, 21, tzinfo=dt.UTC)
+                for s in (sessions[30], sessions[30], sessions[45], sessions[45])
+            ],
+            "weight": [0.5, -0.5, -0.5, 0.5],
+        }
+    ).write_parquet(weights)
+
+    config = tmp_path / "run.yaml"
+    config.write_text(
+        "name: smoke\n"
+        "as_of: '2024-04-01'\n"
+        "start: '2024-01-01'\n"
+        "symbols: [AAPL, MSFT]\n"
+        f"weights: {weights.name}\n"
+        "spread_bps: 5.0\n"
+        "liquidity_window: 10\n"
+        "engine:\n"
+        "  execution: next_close\n"
+    )
+    result = runner.invoke(app, ["backtest", "--config", str(config)])
+    assert result.exit_code == 0, result.output
+    assert "UNDEFLATED" in result.stdout
+    assert "reconciled" in result.stdout
+    assert "point-in-time as of 2024-04-01" in result.stdout

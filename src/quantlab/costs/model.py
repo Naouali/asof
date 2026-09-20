@@ -258,6 +258,24 @@ class TransactionCostModel(CostModel):
         impact = self.impact.cost_bps_expr(notional, adv_notional, volatility_daily, horizon_days)
         return spread_bps / pl.lit(2.0) + impact + commission
 
+    def cost_bps_array(
+        self,
+        notional: np.ndarray,
+        adv_notional: np.ndarray,
+        volatility_daily: np.ndarray,
+        spread_bps: np.ndarray,
+        horizon_days: float = 1.0,
+        commission_bps: float | np.ndarray = 0.0,
+    ) -> np.ndarray:
+        """Total one-way trade cost in bps, vectorised over a cross-section.
+
+        Used by the backtest engine's bar loop. Matches :meth:`estimate` and
+        :meth:`cost_bps_expr`, which a test asserts.
+        """
+        impact = self.impact.cost_bps_array(notional, adv_notional, volatility_daily, horizon_days)
+        result: np.ndarray = spread_bps / 2.0 + impact + commission_bps
+        return result
+
     def cost_currency_expr(
         self,
         notional: pl.Expr,

@@ -7,7 +7,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help base build up down restart ps logs doctor init ingest ingest-daily \
         backtest paper test lint format typecheck check shell notebook catalogue \
-        status fetchers capacity \
+        status fetchers capacity golden \
         dashboard lock clean clean-data verify-multiarch dev-image
 
 COMPOSE      ?= docker compose
@@ -136,6 +136,16 @@ typecheck: dev-image  ## Type-check
 	$(DEV_RUN) mypy
 
 check: lint typecheck test  ## Everything CI runs
+
+golden: dev-image  ## Regenerate the backtest golden fixture (do this deliberately)
+	@echo "This changes what the regression test considers correct."
+	@echo "Only regenerate when the engine's arithmetic SHOULD have changed,"
+	@echo "and say why in the commit message."
+	@read -r -p "Type 'regenerate' to confirm: " reply; \
+	  if [ "$$reply" = "regenerate" ]; then \
+	    docker run --rm -t -v "$(PWD):/w" -w /w $(DEV_IMAGE) \
+	      python scripts/gen_backtest_golden.py; \
+	  else echo "aborted"; fi
 
 lock: ## Re-resolve dependencies and rewrite uv.lock (run after editing pyproject.toml)
 	docker run --rm -v "$(PWD):/w" -w /w ghcr.io/astral-sh/uv:0.5.14 uv lock

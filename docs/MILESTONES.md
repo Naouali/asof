@@ -8,7 +8,7 @@ and committed.
 | 1 | Skeleton + Docker: repo structure, compose stack, Makefile, CI | **complete** |
 | 2 | Data layer: store, PIT machinery, calendars, FRED + Stooq/Yahoo + Binance | **complete** |
 | 3 | Cost models: square-root impact, spread, financing, capacity calculator | **complete** |
-| 4 | Vectorised backtest engine with enforced accounting identities | not started |
+| 4 | Vectorised backtest engine with enforced accounting identities | **complete** |
 | 5 | Validation: CPCV, DSR with automatic trial counting, PBO, empirical-Bayes shrinkage | not started |
 | 6 | Tier 1 signals: time-series momentum, cross-asset carry, equity profitability | not started |
 | 7 | Portfolio construction: vol targeting, risk parity, turnover-aware optimisation, factor risk model | not started |
@@ -138,6 +138,46 @@ what a flat model would claim) and `quantlab costs capacity`.
 identities or empirical regularities, not pinned outputs: the 4×-size-for-2×-impact
 rule, `Q^1.5` currency scaling, alpha-squared capacity, scalar/vectorised
 agreement, and estimator bias measured against a simulated known spread.
+
+## Milestone 4 — what was delivered
+
+**The engine.** Daily/weekly/monthly rebalancing over a dense panel with full
+square-root costs, financing and borrow. The cross-section is vectorised; the time
+axis is a loop, because equity at bar *t* depends on bar *t−1* and costs depend on
+absolute trade size — a recursion that cannot be collapsed into a cumulative
+product without approximating the cost model.
+
+**Accounting.** Every bar is reconciled by two independent routes: a cash ledger
+and a P&L statement. They share no arithmetic, so a discrepancy is a bug rather
+than a rounding artefact, and a breach stops the run. Verified to balance exactly
+across a 30-year, 3,000-name run.
+
+**Conventions, enforced rather than assumed.** Signal on the close of T traded at
+the open of T+1; forward-fill capped at a configured limit with liquidation beyond
+it; a −30% delisting return applied at the *execution* price; calendar-day
+financing accrual; and a refusal to run a panel whose execution convention
+disagrees with the config's.
+
+**Throughput.** The spec's target is a 30-year, 3,000-name backtest with full
+costs in under ten seconds. Measured: **7.4s** (4.6s panel + 2.9s run). Two earlier
+implementations missed it — pivoting each column separately took 111 seconds, and a
+composite (date, symbol) join took 8 seconds of the budget on string hashing. The
+shipped version maps to integer indices and scatters.
+
+**Reproducibility.** A golden-file fixture generated from a seeded panel that
+deliberately contains a data gap and a delisting, pinned bar-for-bar and
+statistic-for-statistic. Regenerated only by hand, never to make a test pass.
+
+**End to end.** `quantlab backtest --config` reads market data through a
+point-in-time snapshot fixed by the config's `as_of`, derives trailing-only
+liquidity statistics, and runs. On the real ingested ETF lake a 12-1 momentum
+strategy came out at 0.20 gross Sharpe and **0.09 net** — with 84 of the 111 bp/yr
+cost drag being *borrow*, which is the spec's own prediction about anomaly alphas
+arriving on the first strategy the platform ever ran.
+
+**Tests** — 90 in the backtest suite, 97% coverage. Includes Hypothesis property
+tests asserting the accounting identity holds for arbitrary input sequences, and a
+throughput test that fails if the ten-second budget is exceeded.
 
 ## Not yet verified
 
