@@ -1,0 +1,35 @@
+# secrets
+.env
+.env.local
+docker-compose.override.yml
+
+# data -- never commit the lake
+/data/
+*.parquet
+*.duckdb
+*.duckdb.wal
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# notebooks: committed, but never their outputs
+.ipynb_checkpoints/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/

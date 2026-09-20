@@ -1,0 +1,44 @@
+# syntax=docker/dockerfile:1.7
+#
+# Jupyter Lab for exploration.
+#
+# Spec section 2: notebooks are for exploring. Anything that produces a number the
+# user might act on lives in src/ with a test. This image therefore bind-mounts
+# ./src editable, so a notebook always exercises the same code the backtest runs.
+
+ARG BASE_IMAGE=quantlab-base:local
+ARG UV_VERSION=0.5.14
+FROM ${BASE_IMAGE}
+
+USER root
+COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /usr/local/bin/uv
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_PYTHON_DOWNLOADS=never
+
+# The research extra (Jupyter, plotting, statsmodels, scikit-learn, pandas) is
+# resolved by the same lockfile as everything else, so the notebook environment
+# cannot drift from the backtest environment.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=pyproject.toml,target=/app/pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=/app/uv.lock \
+    uv sync --frozen --no-dev --extra research --no-install-project \
+ && chown -R quant:quant /app/.venv
+
+USER quant
+WORKDIR /app
+EXPOSE 8888
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8888/api/status', timeout=5).status == 200 else 1)"]
+
+# No token and no password: the port is bound to 127.0.0.1 in compose, so the
+# server is not reachable from outside the host. If that binding is ever changed,
+# a token must be restored here.
+CMD ["jupyter", "lab", \
+     "--ip=0.0.0.0", "--port=8888", "--no-browser", \
+     "--ServerApp.token=", "--ServerApp.password=", \
+     "--ServerApp.root_dir=/app", \
+     "--ServerApp.allow_origin=*"]

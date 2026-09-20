@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1.7
+#
+# FastAPI reporting UI. Serves only local assets -- no CDN references anywhere,
+# because the platform must be fully usable with no internet access (spec 1).
+
+ARG BASE_IMAGE=quantlab-base:local
+FROM ${BASE_IMAGE}
+
+EXPOSE 8000
+
+# urllib rather than curl: the slim base has no curl, and adding one purely for a
+# healthcheck would widen the image's attack surface for no benefit.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD ["python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)"]
+
+CMD ["uvicorn", "quantlab.dashboard.app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Determinism: unseeded hash randomisation is enough to change floating-point
+  # reduction order and break byte-identical backtest results (spec section 1).
+  PYTHONHASHSEED: "0"
+  UV_VERSION: "0.5.14"
+
+jobs:
+  quality:
+    name: lint, types, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Verify the lockfile matches pyproject.toml
+        # A drifted lockfile silently makes the Docker images and CI disagree about
+        # which versions are installed, which breaks reproducibility without anything
+        # visibly failing.
+        run: uv lock --check
+
+      - name: Install
+        run: uv sync --frozen --python 3.12
+
+      - run: uv run ruff check src tests scripts
+      - run: uv run ruff format --check src tests scripts
+      - run: uv run mypy
+
+      - name: Tests
+        # Integration tests need a Docker daemon and are run in the `stack` job.
+        run: >-
+          uv run pytest -m "not integration"
+          --cov --cov-report=term-missing --cov-report=xml
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  stack:
+    name: docker stack comes up healthy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Validate the compose file
+        run: docker compose config --quiet
+
+      - name: Build and start the stack with ZERO API keys
+        # The acceptance criterion from spec section 10: a clean machine, no .env,
+        # no credentials, one command.
+        run: make up
+
+      - name: Show service state
+        if: always()
+        run: docker compose ps
+
+      - name: doctor must succeed without credentials
+        run: docker compose exec -T worker quantlab doctor
+
+      - name: Unimplemented commands must fail loudly, not silently succeed
+        run: |
+          set +e
+          docker compose exec -T worker quantlab data ingest
+          code=$?
+          set -e
+          test "$code" -eq 2 || { echo "expected exit 2, got $code"; exit 1; }
+
+      - name: Dashboard responds
+        run: |
+          curl --fail --silent --show-error --retry 10 --retry-delay 3 \
+            --retry-all-errors http://127.0.0.1:8080/api/health | tee /dev/stderr \
+            | grep -q '"status"'
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down --remove-orphans --volumes
+
+  multiarch:
+    name: base image builds for amd64 and arm64
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build for both architectures
+        # Spec section 10: must build and run on linux/amd64 and linux/arm64. A
+        # dependency without an arm64 wheel fails here rather than on the user's
+        # Apple Silicon laptop.
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.base
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

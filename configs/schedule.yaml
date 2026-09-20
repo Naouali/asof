@@ -1,0 +1,46 @@
+# Scheduled jobs for the `scheduler` service. Times are UTC -- market-local
+# conversions belong in the trading calendars, not here, where a DST shift could
+# silently move a job across a data release.
+#
+# Commands are passed to `python -m quantlab`, so `["data", "ingest"]` runs
+# `quantlab data ingest`. Jobs whose command is not implemented yet are disabled;
+# they are listed so the intended cadence is visible and reviewable now.
+
+jobs:
+  - name: ingest-daily
+    description: Incremental pull from every available source.
+    cron: "30 5 * * 1-5"          # 05:30 UTC, weekdays: after US settlement, before Europe opens
+    command: ["data", "ingest", "--incremental"]
+    timeout_seconds: 5400
+    enabled: false                 # Milestone 2
+
+  - name: ingest-crypto
+    description: Crypto trades continuously, so it updates on weekends too.
+    cron: "10 * * * *"
+    command: ["data", "ingest", "--incremental"]
+    timeout_seconds: 1800
+    enabled: false                 # Milestone 2
+
+  - name: options-snapshot
+    description: >-
+      Daily options chain snapshot. There is no free historical options data, so
+      our history starts the day this job starts running -- every day it is
+      disabled is a day of history that can never be recovered.
+    cron: "0 21 * * 1-5"          # 21:00 UTC ~= 16:00 ET, after the US close
+    command: ["data", "ingest", "--incremental"]
+    timeout_seconds: 1800
+    enabled: false                 # Milestone 9
+
+  - name: paper-trading
+    description: Compute today's signals, produce target positions, mark to market.
+    cron: "0 22 * * 1-5"
+    command: ["paper"]
+    timeout_seconds: 3600
+    enabled: false                 # Milestone 11
+
+  - name: doctor
+    description: Environment self-check; the only job enabled before Milestone 2.
+    cron: "0 6 * * *"
+    command: ["doctor"]
+    timeout_seconds: 300
+    enabled: true

@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1.7
+#
+# Ingestion and backtest worker, and (with a different command) the scheduler.
+# Both services share this image: they run the same code with different entry
+# commands, so there is no second dependency surface to keep in sync.
+
+ARG BASE_IMAGE=quantlab-base:local
+FROM ${BASE_IMAGE}
+
+# The worker writes its heartbeat into the data volume's state directory; the
+# healthcheck asserts that heartbeat is fresh. A PID-based check would report a
+# deadlocked worker as healthy.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD ["quantlab", "worker", "healthcheck"]
+
+CMD ["quantlab", "worker", "run"]
