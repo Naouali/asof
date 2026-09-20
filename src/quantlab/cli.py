@@ -974,6 +974,94 @@ def backtest(
         console.print(f"[green]wrote[/green] {output}")
 
 
+@validate_app.command("anomalies")
+def validate_anomalies(
+    t_stat: Annotated[
+        float | None,
+        typer.Option("--t-stat", help="Your own t-statistic, to place against the literature."),
+    ] = None,
+    as_of: Annotated[str, typer.Option("--as-of", help="Point-in-time date.")] = "2026-01-01",
+) -> None:
+    """The published anomaly literature, and where your result sits in it.
+
+    Chen & Zimmermann catalogued every cross-sectional equity predictor they could
+    find in a published paper, with the t-statistic the original authors reported.
+    That distribution is the trial count of the whole field, and it is visibly
+    truncated at the significance threshold: almost nothing below |t| = 2 is ever
+    published, so the sample says nothing about how many signals were tried and
+    discarded.
+
+    The practical consequence is that a t-statistic is not evidence on its own.
+    Harvey, Liu and Zhu argue a new anomaly needs |t| above roughly 3.0 to survive
+    the multiple testing the literature has already done; a quarter of published
+    predictors do not clear that bar.
+    """
+    from quantlab.data.store import Store
+
+    snapshot = Store(get_settings().layout).as_of(as_of)
+    frame = snapshot.frame("anomaly_catalogue")
+    if frame.height == 0:
+        err_console.print(
+            "[red]no anomaly catalogue in the lake[/red] -- ingest it first:\n"
+            "  quantlab data ingest -f open_asset_pricing.anomaly_catalogue"
+        )
+        raise typer.Exit(code=2)
+
+    predictors = frame.filter(pl.col("category") == "Predictor")
+    stats = predictors.select(pl.col("published_t_stat")).drop_nulls()["published_t_stat"]
+    if stats.len() == 0:
+        err_console.print("[red]the catalogue carries no published t-statistics[/red]")
+        raise typer.Exit(code=2)
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("the published literature")
+    table.add_column("", justify="right")
+    table.add_row("catalogued signals", f"{frame.height:,}")
+    table.add_row("  of which predictors", f"{predictors.height:,}")
+    table.add_row(
+        "  of which placebos", f"{frame.filter(pl.col('category') == 'Placebo').height:,}"
+    )
+    values = np.abs(stats.to_numpy().astype(float))
+    median = float(np.median(values))
+    low, high = (float(x) for x in np.percentile(values, [10, 90]))
+    below_two = float((values < 2.0).mean())
+    below_three = float((values < 3.0).mean())
+
+    table.add_row("published t-statistics", f"{stats.len():,}")
+    table.add_row("  median", f"{median:.2f}")
+    table.add_row("  10th / 90th percentile", f"{low:.2f} / {high:.2f}")
+    table.add_row("  share below |t| = 2.0", f"{below_two:.1%}")
+    table.add_row("  share below |t| = 3.0", f"{below_three:.1%}")
+    console.print(table)
+
+    console.print(
+        "\n[dim]Almost nothing below |t| = 2 appears, because that is where journals "
+        "stop accepting papers. The distribution therefore describes what survived "
+        "publication, not what was tried.[/dim]"
+    )
+
+    if t_stat is not None:
+        share = float((values < abs(t_stat)).mean())
+        console.print(
+            f"\nA t-statistic of [bold]{t_stat:.2f}[/bold] is larger than "
+            f"[bold]{share:.0%}[/bold] of published predictors."
+        )
+        if abs(t_stat) < 3.0:
+            console.print(
+                "[yellow]Below the |t| > 3.0 bar[/yellow] that Harvey, Liu and Zhu "
+                "argue a new anomaly needs to survive the multiple testing the "
+                f"literature has already done. {below_three:.0%} of "
+                "published predictors are below it too, which is the problem rather "
+                "than the reassurance."
+            )
+        else:
+            console.print(
+                "[green]Clears the |t| > 3.0 bar.[/green] That is necessary and not "
+                "sufficient: it says nothing about how many configurations you tried, "
+                "which is what `quantlab validate trials` counts."
+            )
+
+
 @app.command()
 def report(
     config: Annotated[Path, typer.Option("--config", "-c", help="Run config YAML.")],

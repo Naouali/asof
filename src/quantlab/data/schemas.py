@@ -303,6 +303,32 @@ DATASETS: dict[str, DatasetSchema] = {
         key=("symbol", "report", "category", "measure"),
         required=("report", "category", "measure"),
     ),
+    "anomaly_catalogue": DatasetSchema(
+        name="anomaly_catalogue",
+        description=(
+            "Published cross-sectional equity predictors, with the effect size and "
+            "t-statistic as reported in the original paper. `as_of` is the end of "
+            "the ORIGINAL SAMPLE -- the last date the published evidence covers -- "
+            "and `known_at` is publication, when the finding entered the public "
+            "domain. The gap between them is the out-of-sample window every "
+            "replication has to be measured over, and the two are recorded "
+            "separately because post-publication decay is measured from the second "
+            "while in-sample fit ends at the first."
+        ),
+        columns={
+            "name": pl.Utf8(),
+            "authors": pl.Utf8(),
+            "journal": pl.Utf8(),
+            "category": pl.Utf8(),
+            "replication": pl.Utf8(),
+            "evidence": pl.Utf8(),
+            "published_return": pl.Float64(),
+            "published_t_stat": pl.Float64(),
+            "sign": pl.Float64(),
+        },
+        key=("symbol",),
+        required=("name", "category"),
+    ),
     "instruments": DatasetSchema(
         name="instruments",
         description=(

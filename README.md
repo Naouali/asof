@@ -199,6 +199,22 @@ NOT EVIDENCE that etf-momentum-12-1 works:
 
 That is a real result on real data, and printing it is the point.
 
+## What the literature already tried
+
+```bash
+quantlab validate anomalies --t-stat 2.4
+```
+
+Chen & Zimmermann catalogued every published cross-sectional equity predictor they
+could find, with the t-statistic the original paper reported. Of 212 predictors the
+median is **4.0** and only **2.7%** fall below |t| = 2 — a distribution truncated
+exactly where journals stop accepting papers. The signals that were tried and
+abandoned are absent by construction, so it is a *lower bound* on how hard the
+space has been searched.
+
+That is the context a t-statistic needs before it means anything, and it is why
+this platform will not print a Sharpe without a trial count.
+
 ## Validating a result
 
 Every backtest records itself as a trial, and the count deflates the Sharpe it

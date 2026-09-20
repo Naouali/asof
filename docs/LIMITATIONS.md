@@ -406,3 +406,43 @@ function of the tag list, which is short.
 **The fundamentals universe is fifteen companies.** Each company's facts payload
 is several megabytes, so the default is small enough to ingest politely. Nothing
 here has been validated at the scale a real cross-sectional equity strategy needs.
+
+## Volatility indices and the anomaly catalogue (Milestone 9)
+
+**VIX is not investable, and nothing in the lake stops you forgetting that.** It
+is stored as an index level rather than a bar, which prevents the backtest engine
+treating it as tradeable, but a signal can still read it and a portfolio can still
+be sized against it. Every tradeable expression — futures, options, the ETPs —
+carries a roll cost that spot does not, and over any long horizon they have
+underperformed the index by a wide margin. A backtest that "holds VIX" is not a
+strategy anyone could have run.
+
+**The VIX series spans a methodology change.** CBOE moved to the model-free
+variance-swap calculation on 2003-09-22. The pre-2003 history served today is a
+back-cast under the new method; the index actually published then was VXO,
+computed from OEX implied volatilities. A fetch spanning that date logs a warning
+and the data is still one column, so a long-horizon study has to decide
+deliberately whether to use it.
+
+**The anomaly catalogue is a snapshot of one team's replication effort.** Chen
+and Zimmermann's assessments are judgements, not measurements, and the 212
+predictors are the ones they could find and code — not every anomaly ever
+published, and certainly not every anomaly ever tried. The published t-statistic
+is what the original paper reported, so it inherits whatever that paper's
+specification choices were.
+
+**The published t-stat distribution understates the search.** Median 4.0, with
+2.7% below |t| = 2. That is not evidence the field is finding real effects; it is
+evidence journals do not publish t-statistics below 2. The signals that were
+tried and abandoned are absent by construction, so the distribution is a lower
+bound on how hard the space has been searched — which means the multiple-testing
+correction it motivates is also a lower bound.
+
+**The catalogue stops in 2016.** Nothing published since is in it, and the
+post-2016 literature is where the replication debate has been most active.
+
+**OSAP's distribution channel is fragile by the source's own choice.** The files
+live on Google Drive behind ids that change on re-upload, with no versioned URL,
+no content hash and no API. The id is pinned and the payload shape is checked, so
+a change fails loudly — but it will fail, and when it does the fix is a manual
+re-pin rather than anything automatic.

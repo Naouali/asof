@@ -772,3 +772,75 @@ def test_report_needs_a_config(tmp_path: Path) -> None:
     result = runner.invoke(app, ["report", "--config", str(tmp_path / "nope.yaml")])
     assert result.exit_code == 2
     assert "no run config" in result.output
+
+
+def test_validate_anomalies_needs_the_catalogue(settings: Settings) -> None:
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["validate", "anomalies"])
+    assert result.exit_code == 2
+    assert "open_asset_pricing" in result.output
+
+
+def test_validate_anomalies_places_a_t_stat_in_the_literature(store: object) -> None:
+    """The point of the command: a t-statistic means nothing until you know what
+    the published distribution looks like, and that distribution is truncated at
+    the significance threshold because that is where journals stop."""
+    rows = [
+        {
+            "source": "open_asset_pricing",
+            "dataset": "anomaly_catalogue",
+            "symbol": f"SIG{i}",
+            "as_of": dt.datetime(2000, 12, 31, tzinfo=dt.UTC),
+            "known_at": dt.datetime(2005, 12, 31, tzinfo=dt.UTC),
+            "ingested_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+            "name": f"signal {i}",
+            "authors": "Someone",
+            "journal": "JF",
+            "category": "Predictor",
+            "replication": "1_good",
+            "evidence": "1_clear",
+            "published_return": 0.5,
+            "published_t_stat": t,
+            "sign": 1.0,
+        }
+        for i, t in enumerate([2.1, 2.6, 3.2, 4.0, 5.5, 8.0])
+    ]
+    store.write(pl.DataFrame(rows), asset_class="reference")  # type: ignore[attr-defined]
+
+    result = runner.invoke(
+        app, ["validate", "anomalies", "--as-of", "2026-01-01", "--t-stat", "2.4"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "published t-statistics" in result.output
+    assert "larger than" in result.output
+    assert "Harvey" in result.output  # the |t| > 3.0 bar is named, not implied
+
+
+def test_validate_anomalies_credits_a_strong_result_without_overclaiming(store: object) -> None:
+    rows = [
+        {
+            "source": "open_asset_pricing",
+            "dataset": "anomaly_catalogue",
+            "symbol": f"SIG{i}",
+            "as_of": dt.datetime(2000, 12, 31, tzinfo=dt.UTC),
+            "known_at": dt.datetime(2005, 12, 31, tzinfo=dt.UTC),
+            "ingested_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+            "name": f"signal {i}",
+            "authors": "Someone",
+            "journal": "JF",
+            "category": "Predictor",
+            "replication": "1_good",
+            "evidence": "1_clear",
+            "published_return": 0.5,
+            "published_t_stat": t,
+            "sign": 1.0,
+        }
+        for i, t in enumerate([2.1, 2.6, 3.2, 4.0])
+    ]
+    store.write(pl.DataFrame(rows), asset_class="reference")  # type: ignore[attr-defined]
+
+    result = runner.invoke(
+        app, ["validate", "anomalies", "--as-of", "2026-01-01", "--t-stat", "6.0"]
+    )
+    assert "Clears" in result.output
+    assert "not sufficient" in result.output, "a t-stat says nothing about trial count"

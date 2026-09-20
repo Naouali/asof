@@ -64,6 +64,25 @@ jobs:
     symbols: [aapl.us, msft.us]
 
   # --------------------------------------------------------- academic factors --
+  # -------------------------------------------------------- the literature ----
+  # Every published cross-sectional equity predictor Chen & Zimmermann could
+  # find, with the t-statistic the original paper reported. This is the trial
+  # count of the entire literature, and the input to reading your own honestly.
+  - fetcher: open_asset_pricing.anomaly_catalogue
+    description: Published anomalies, with original effect sizes and replication grades.
+    start: "1900-01-01"
+    symbols: []
+
+  # ------------------------------------------------------------- volatility ----
+  # VIX and relatives, as INDEX LEVELS in series_observations rather than bars.
+  # VIX spot cannot be bought -- the tradeable expressions are futures, options
+  # and ETPs, each with its own roll cost -- so filing it where the engine treats
+  # it as tradeable would let a strategy collect a return nobody could earn.
+  - fetcher: cboe.series_observations
+    description: CBOE volatility indices. VIX reaches back to 1990.
+    start: "1990-01-01"
+    symbols: [VIX, VIX9D, VIX3M, VIX6M, VVIX]
+
   # ----------------------------------------------------------- fundamentals ----
   # The only free source of AS-FILED fundamentals. `as_of` is the period end and
   # `known_at` is the filing date, so a backtest sees 2015 through 2015's eyes

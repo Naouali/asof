@@ -221,6 +221,11 @@ class HttpClient:
     def get_text(self, url: str, **kwargs: Any) -> str:
         return self.request(url, **kwargs).text
 
+    def get_bytes(self, url: str, **kwargs: Any) -> bytes:
+        """Raw body, for payloads that are neither JSON nor text -- a zip, or a
+        CSV whose encoding the source does not declare."""
+        return self.request(url, **kwargs).content
+
     # ---------------------------------------------------------------- helpers --
     def _observe(self, response: httpx.Response) -> None:
         """Back off pre-emptively when a venue tells us how close we are to a ban.
