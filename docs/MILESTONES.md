@@ -11,8 +11,8 @@ and committed.
 | 4 | Vectorised backtest engine with enforced accounting identities | **complete** |
 | 5 | Validation: CPCV, DSR with automatic trial counting, PBO, empirical-Bayes shrinkage | **complete** |
 | 6 | Tier 1 signals: time-series momentum, cross-asset carry, equity profitability | **complete** |
-| 7 | Portfolio construction: vol targeting, risk parity, turnover-aware optimisation, factor risk model | not started |
-| 8 | Reporting: tearsheets with capacity and validation statistics | not started |
+| 7 | Portfolio construction: vol targeting, risk parity, turnover-aware optimisation, factor risk model | **complete** |
+| 8 | Reporting: tearsheets with capacity and validation statistics | **complete** |
 | 9 | Remaining data sources: SEC EDGAR, CFTC COT, EIA, academic factors, options collector | not started |
 | 10 | Event-driven engine and Tier 2 signals | not started |
 | 11 | Paper trading loop, dashboard, decay monitor | not started |
@@ -341,6 +341,72 @@ the long-held trend positions that stops are cited as helping.
   time; an IR of 0.42 rarely. The estimator is unbiased at every level. A single
   t-statistic near the threshold carries almost no information, which is why the
   platform reports a deflated Sharpe and trial count beside it.
+
+## Milestone 8 — what was delivered
+
+**A tearsheet that refuses to flatter.** Two of spec section 13's prohibitions
+are enforced structurally rather than by convention: `Tearsheet.build` raises if
+the run carries no trial count, and capacity is a keyword argument with no
+default. There is no override flag for either, so the failure mode is a report
+that will not render rather than one that renders without the inconvenient parts.
+
+**Panels ordered by severity, worst first.** A strategy that fails deflation says
+so above its equity curve. Ordering by topic would put the accounting
+reconciliation above the reason the result is worthless.
+
+**Four renderings from one source of content** — text, Markdown, HTML and a JSON
+dictionary for the dashboard — so they cannot drift apart and disagree about what
+the strategy did. The HTML is self-contained: no scripts, no fonts, no network,
+21 KB including an inline SVG of the equity curve.
+
+**Capacity derived from the run**, not supplied: alpha and turnover from its own
+P&L, liquidity from the panel it traded, rebalance frequency counted from bars
+that actually traded.
+
+**Caveats from the catalogue.** A limitation recorded once when a source is
+registered appears on every tearsheet built from that source's data. The example
+run surfaces five Yahoo caveats, including the survivorship warning, without
+anyone remembering to mention them.
+
+### The example run, reported honestly
+
+A 12-1 momentum book on fourteen ETFs, 2010-2026, is the first strategy the
+platform has reported end to end. Its tearsheet opens:
+
+> **NOT EVIDENCE that etf-momentum-12-1 works:**
+> - The deflated Sharpe of 0.470 is below 0.95: after 1 trial(s) this result is
+>   not distinguishable from the best of the search.
+> - There is no AUM at which this strategy makes money after costs. Spread,
+>   commission and holding costs exceed the gross edge at any size; this is not
+>   a capacity problem, the signal does not pay.
+
+CAGR −0.68%, Sharpe −0.02 net against 0.11 gross, turnover 1,020%/yr, and a cost
+drag of 133 bp/yr of which **89 bp is borrow** — the platform's punitive
+180 bp/yr default on the short leg. That is the result, and reporting it is the
+point.
+
+### Three bugs, all found by checking arithmetic against the run
+
+**Holding costs charged twice.** The capacity link netted borrow and financing
+out of the gross alpha *and* passed them to the capacity model, which applies
+them again. Net alpha came back at −143 bp/yr against a realised CAGR of −68.
+Gross alpha is now the realised return with the whole drag added back, exactly
+once: −68.2 + 133.1 = +64.9 bp/yr.
+
+**Every held bar counted as a rebalance.** Held weights drift with prices, so the
+run's positions frame carried 4,122 distinct dates while only **197 bars actually
+traded**. Counting the former told the capacity model the strategy made 248 small
+trades a year rather than 12 large ones, and because impact is concave in size
+that understates impact and **overstates** capacity. Rebalances are now counted
+from non-zero traded notional.
+
+**Downsampling could hide the trough.** The first SVG emitted all 4,182 points
+and cost 96 KB. Bucketing fixed the size, but decimating the drawdown the same
+way as the equity line would let a one-bar crash vanish from the chart — the most
+flattering thing a downsample can do. Equity now takes the last value in each
+bucket and drawdown takes the minimum, so the worst drawdown cannot be lost. A
+test constructs a single-bar 60% crash in four thousand bars and asserts it
+survives a 50-point render.
 
 ## Not yet verified
 

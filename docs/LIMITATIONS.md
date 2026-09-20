@@ -319,3 +319,44 @@ thresholds (−10% soft, −25% hard) and stop threshold (−20%, 5-bar cooldown
 round numbers, not fitted values, and deliberately so: a control fitted to the
 drawdowns in a sample is fitted to the sample. Neither has been validated against
 a live book, and neither should be expected to improve returns.
+
+## Tearsheets (Milestone 8)
+
+**A tearsheet that renders is not a tearsheet that passed.** The refusals
+enforce two specific things — a trial count and a capacity estimate — and nothing
+more. A result can render cleanly and still be worthless for reasons the module
+cannot see: a universe assembled from today's survivors, a signal whose
+construction encoded a fact nobody knew at the time, a cost model calibrated to
+literature rather than to your fills. `is_disqualified` means *these* checks
+failed, never that the remaining ones passed.
+
+**The deflated Sharpe corrects for search intensity alone.** It counts
+configurations tried inside this platform. It cannot count the ideas discarded
+before anything was run, the datasets chosen because they looked promising, or
+the twenty years of published research that already picked this signal out for
+you. The trial count is a floor on how hard the space was searched, not an
+estimate of it.
+
+**Capacity inherits every cost assumption.** The break-even AUM is only as good
+as the impact coefficients, the assumed spread, and the borrow rate — none of
+which is calibrated to real fills, and the last of which is a 180 bp/yr default
+that dominates the short leg of the example run. Treat the number as an order of
+magnitude, and read the binding constraint rather than the AUM.
+
+**Caveats are a superset when the source is unknown.** A run that did not record
+which source it read gets the caveats of every source that could have supplied
+its dataset. That errs toward showing a limitation that did not apply rather than
+hiding one that did, but it means the list is not evidence about what was
+actually used.
+
+**No benchmark comparison.** A tearsheet reports the strategy and nothing else.
+It does not tell you whether a passive position would have done the same thing
+more cheaply — `quantlab risk attribute` answers that, and the two are not yet
+joined up. Reading a tearsheet in isolation can make a levered beta position look
+like a strategy.
+
+**The chart is deliberately minimal.** One log-scale equity line and a drawdown
+band, downsampled to 600 points. There is no rolling Sharpe, no monthly return
+table, no underwater plot with dates. Those are useful and they are also where
+a reader's attention goes instead of to the deflation statistics, which is why
+the first version does not have them.

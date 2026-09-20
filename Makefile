@@ -105,6 +105,10 @@ trials:  ## Show the trial registry -- what is deflating your Sharpe ratios
 library:  ## Empirical-Bayes shrinkage across every signal family
 	$(COMPOSE) exec -T worker quantlab validate library
 
+report:  ## Tearsheet for a run: make report CONFIG=configs/backtest_example.yaml
+	@test -n "$(CONFIG)" || { echo "usage: make report CONFIG=<path> [FORMAT=text|markdown|html]"; exit 2; }
+	$(COMPOSE) exec -T worker quantlab report --config $(CONFIG) --format $(or $(FORMAT),text)
+
 attribute:  ## Is it secretly just beta? make attribute SYMBOL=SPY
 	@test -n "$(SYMBOL)" || { echo "usage: make attribute SYMBOL=<ticker> [AS_OF=<date>]"; exit 2; }
 	$(COMPOSE) exec -T worker quantlab risk attribute -s $(SYMBOL) \

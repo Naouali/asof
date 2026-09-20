@@ -171,6 +171,34 @@ small-cap factor because it *is* the small-cap index; TLT's market beta is −0.
 Getting SPY's alpha to zero took fixing two real bugs — see
 [docs/MILESTONES.md](docs/MILESTONES.md).
 
+## Reporting a result
+
+```bash
+quantlab report --config configs/backtest_example.yaml           # to the terminal
+quantlab report -c configs/backtest_example.yaml -f html -o s.html
+```
+
+The tearsheet **refuses to render** a Sharpe ratio without its deflated value and
+trial count, and refuses to render at all without a capacity estimate. Both are
+constructor arguments with no default and no override flag, so the failure mode is
+a report that will not build rather than one that quietly omits the inconvenient
+parts. Panels are ordered worst-first: a strategy that fails deflation says so
+above its equity curve. `report` exits non-zero when the result is disqualified,
+because the exit code is the only part of a tearsheet a script reads.
+
+The example ETF momentum run opens with:
+
+```
+NOT EVIDENCE that etf-momentum-12-1 works:
+  - The deflated Sharpe of 0.470 is below 0.95: after 1 trial(s) this result is
+    not distinguishable from the best of the search.
+  - There is no AUM at which this strategy makes money after costs. Spread,
+    commission and holding costs exceed the gross edge at any size; this is not
+    a capacity problem, the signal does not pay.
+```
+
+That is a real result on real data, and printing it is the point.
+
 ## Validating a result
 
 Every backtest records itself as a trial, and the count deflates the Sharpe it

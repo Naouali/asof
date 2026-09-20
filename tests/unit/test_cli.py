@@ -229,13 +229,14 @@ def test_backtest_without_a_config_fails_loudly() -> None:
 
 
 def test_backtest_without_weights_explains_what_is_missing(tmp_path: Path, repo_root: Path) -> None:
-    """Until Milestone 6 generates weights from signals, they come from a file.
-    The error has to say so rather than just reporting a missing path."""
+    """Weights come from a file. The error has to say what the file contains and
+    where to get one, not just report a missing path."""
     config = tmp_path / "run.yaml"
     config.write_text("name: t\nas_of: '2024-01-05'\nsymbols: [AAPL]\nweights: missing.parquet\n")
     result = runner.invoke(app, ["backtest", "--config", str(config)])
     assert result.exit_code == 2
-    assert "Milestone 6" in result.output
+    assert "symbol, as_of, weight" in result.output
+    assert "signal library" in result.output
 
 
 def test_backtest_on_an_empty_lake_says_to_ingest(tmp_path: Path) -> None:
@@ -656,3 +657,118 @@ def test_risk_pca_rejects_too_many_factors(store: object) -> None:
     )
     assert result.exit_code == 2
     assert "n_factors must be between" in result.output
+
+
+# ----------------------------------------------------------------------------------
+# Tearsheets
+# ----------------------------------------------------------------------------------
+def _smoke_run(tmp_path: Path, store: object, *, sessions_count: int = 120) -> Path:
+    """A lake and a run config that produce a real, reportable backtest."""
+    import numpy as np
+    from tests.conftest import bar
+
+    rng = np.random.default_rng(7)
+    sessions = [dt.date(2024, 1, 2) + dt.timedelta(days=i) for i in range(sessions_count)]
+    rows = []
+    for symbol, drift in (("AAPL", 0.0012), ("MSFT", 0.0004)):
+        price = 100.0
+        for session in sessions:
+            price *= float(np.exp(rng.normal(drift, 0.011)))
+            row = bar(symbol, session, price)
+            row["volume"] = 5_000_000.0
+            rows.append(row)
+    store.write(pl.DataFrame(rows), asset_class="equity")  # type: ignore[attr-defined]
+
+    weights_path = tmp_path / "w.parquet"
+    rebalances = [sessions[i] for i in range(40, sessions_count, 10)]
+    pl.DataFrame(
+        {
+            "symbol": ["AAPL", "MSFT"] * len(rebalances),
+            "as_of": [
+                dt.datetime(s.year, s.month, s.day, 21, tzinfo=dt.UTC)
+                for s in rebalances
+                for _ in range(2)
+            ],
+            "weight": [
+                w for i in range(len(rebalances)) for w in ((0.5, -0.5) if i % 2 else (-0.5, 0.5))
+            ],
+        }
+    ).write_parquet(weights_path)
+
+    config = tmp_path / "run.yaml"
+    config.write_text(
+        "name: tearsheet-smoke\n"
+        f"as_of: '{sessions[-1] + dt.timedelta(days=1)}'\n"
+        "start: '2024-01-01'\n"
+        "symbols: [AAPL, MSFT]\n"
+        f"weights: {weights_path.name}\n"
+        "spread_bps: 5.0\n"
+        "liquidity_window: 10\n"
+        "engine:\n"
+        "  execution: next_close\n"
+    )
+    return config
+
+
+def test_report_renders_a_tearsheet(tmp_path: Path, store: object) -> None:
+    config = _smoke_run(tmp_path, store)
+    result = runner.invoke(app, ["report", "--config", str(config)])
+
+    assert result.exit_code in {0, 1}, result.output  # 1 when the result is disqualified
+    assert "PERFORMANCE" in result.output
+    assert "CAPACITY" in result.output
+    assert "Deflated Sharpe" in result.output
+
+
+def test_a_disqualified_result_exits_non_zero(tmp_path: Path, store: object) -> None:
+    """So a scripted sweep cannot treat a strategy that fails deflation as a
+    success. The exit code is the only part of a tearsheet a script reads."""
+    config = _smoke_run(tmp_path, store)
+    result = runner.invoke(app, ["report", "--config", str(config)])
+
+    disqualified = "NOT EVIDENCE" in result.output
+    assert result.exit_code == (1 if disqualified else 0)
+
+
+def test_report_writes_html(tmp_path: Path, store: object) -> None:
+    config = _smoke_run(tmp_path, store)
+    out = tmp_path / "sheet.html"
+    runner.invoke(app, ["report", "--config", str(config), "-f", "html", "-o", str(out)])
+
+    body = out.read_text()
+    assert body.startswith("<!doctype html>")
+    assert "<svg" in body
+    assert "<script" not in body  # self-contained, and no scripts
+
+
+def test_report_writes_markdown(tmp_path: Path, store: object) -> None:
+    config = _smoke_run(tmp_path, store)
+    out = tmp_path / "sheet.md"
+    runner.invoke(app, ["report", "--config", str(config), "-f", "markdown", "-o", str(out)])
+    assert out.read_text().startswith("# tearsheet-smoke")
+
+
+def test_report_rejects_an_unknown_format(tmp_path: Path, store: object) -> None:
+    config = _smoke_run(tmp_path, store)
+    result = runner.invoke(app, ["report", "--config", str(config), "-f", "pdf"])
+    assert result.exit_code == 2
+    assert "unknown format" in result.output
+
+
+def test_report_rejects_an_unknown_source(tmp_path: Path, store: object) -> None:
+    config = _smoke_run(tmp_path, store)
+    result = runner.invoke(app, ["report", "--config", str(config), "--source", "not-a-source"])
+    assert result.exit_code == 2
+
+
+def test_report_carries_the_source_caveats(tmp_path: Path, store: object) -> None:
+    config = _smoke_run(tmp_path, store)
+    result = runner.invoke(app, ["report", "--config", str(config), "--source", "yahoo"])
+    assert "DATA QUALITY" in result.output
+    assert "survivorship" in result.output.lower()
+
+
+def test_report_needs_a_config(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["report", "--config", str(tmp_path / "nope.yaml")])
+    assert result.exit_code == 2
+    assert "no run config" in result.output

@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 from types import FrameType
-from typing import Annotated, NoReturn
+from typing import TYPE_CHECKING, Annotated, NoReturn
 
 import numpy as np
 import polars as pl
@@ -31,6 +31,11 @@ from quantlab.health import Status, run_checks, source_availability
 from quantlab.logging import configure_logging, get_logger
 from quantlab.runtime import Heartbeat, read_heartbeat
 from quantlab.validation import expected_max_sharpe
+
+if TYPE_CHECKING:  # pragma: no cover
+    from quantlab.backtest.config import RunConfig
+    from quantlab.backtest.panel import Panel
+    from quantlab.backtest.results import BacktestResult
 
 app = typer.Typer(
     name="quantlab",
@@ -863,18 +868,14 @@ def signals_run(
     )
 
 
-@app.command()
-def backtest(
-    config: Annotated[Path, typer.Option("--config", "-c", help="Run config YAML.")],
-    output: Annotated[
-        Path | None, typer.Option("--output", "-o", help="Write the equity curve here.")
-    ] = None,
-) -> None:
-    """Run a backtest from a config.
+def _load_and_run(
+    config: Path, *, record_trial: bool = True
+) -> tuple[RunConfig, Panel, BacktestResult]:
+    """Config to (run config, panel, result). Shared by `backtest` and `report`.
 
-    Reads market data through a point-in-time snapshot fixed by the config's
-    `as_of`, so re-running later sees the same data rather than whatever the lake
-    has learned since.
+    Both commands must build the panel identically -- a tearsheet describing a
+    slightly different run than the one the user just looked at would be worse
+    than no tearsheet.
     """
     from quantlab.backtest import Panel, VectorisedBacktest
     from quantlab.backtest.config import load_run_config
@@ -889,9 +890,11 @@ def backtest(
     if not run.weights_path.exists():
         err_console.print(
             f"[red]no weights file at {run.weights_path}[/red]\n"
-            "A backtest needs target weights. Milestone 6 generates them from the "
-            "signal library; until then, write a parquet or csv with columns "
-            "symbol, as_of, weight."
+            "A backtest needs target weights: a parquet or csv with columns "
+            "symbol, as_of, weight, dated on the bar they are COMPUTED on -- the "
+            "engine applies the execution lag itself.\n"
+            "Generate them from the signal library (`quantlab signals list`), or "
+            "write the file directly."
         )
         raise typer.Exit(code=2)
 
@@ -924,7 +927,30 @@ def backtest(
         if run.weights_path.suffix == ".parquet"
         else pl.read_csv(run.weights_path, try_parse_dates=True)
     )
-    result = VectorisedBacktest(run.engine, run.cost_model()).run(panel, weights, name=run.name)
+    try:
+        result = VectorisedBacktest(run.engine, run.cost_model()).run(
+            panel, weights, name=run.name, record_trial=record_trial
+        )
+    except ValueError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+    return run, panel, result
+
+
+@app.command()
+def backtest(
+    config: Annotated[Path, typer.Option("--config", "-c", help="Run config YAML.")],
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write the equity curve here.")
+    ] = None,
+) -> None:
+    """Run a backtest from a config.
+
+    Reads market data through a point-in-time snapshot fixed by the config's
+    `as_of`, so re-running later sees the same data rather than whatever the lake
+    has learned since.
+    """
+    run, _panel, result = _load_and_run(config)
 
     console.print(result.summary())
     console.print()
@@ -946,6 +972,69 @@ def backtest(
         output.parent.mkdir(parents=True, exist_ok=True)
         result.curve.write_parquet(output)
         console.print(f"[green]wrote[/green] {output}")
+
+
+@app.command()
+def report(
+    config: Annotated[Path, typer.Option("--config", "-c", help="Run config YAML.")],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Write the tearsheet here (.html, .md or .txt)."),
+    ] = None,
+    fmt: Annotated[str, typer.Option("--format", "-f", help="text, markdown or html.")] = "text",
+    sources: Annotated[
+        list[str] | None,
+        typer.Option("--source", help="Catalogue source key whose caveats apply. Repeatable."),
+    ] = None,
+) -> None:
+    """Run a backtest and render its tearsheet.
+
+    The tearsheet refuses to render a Sharpe ratio without its deflated value and
+    trial count, and refuses to render at all without a capacity estimate (spec
+    section 13). Both are derived from the run itself rather than supplied, so
+    there is nothing to leave out.
+
+    Panels are ordered worst-first, so a strategy that fails deflation says so
+    above its equity curve rather than beneath it.
+    """
+    from quantlab.reporting import Tearsheet, TearsheetError, caveats_for, sources_behind
+    from quantlab.reporting.capacity import capacity_for
+    from quantlab.reporting.render import to_html, to_markdown, to_text
+
+    if fmt not in {"text", "markdown", "html"}:
+        err_console.print(f"[red]unknown format {fmt!r}[/red]; use text, markdown or html")
+        raise typer.Exit(code=2)
+
+    run, panel, result = _load_and_run(config)
+
+    # A superset when the run did not record its source: better to show a caveat
+    # that did not apply than to hide one that did.
+    keys = sources or ([run.source] if run.source else list(sources_behind([run.dataset])))
+    try:
+        caveats = caveats_for(keys)
+    except KeyError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+
+    try:
+        capacity = capacity_for(result, panel)
+        sheet = Tearsheet.build(result, capacity=capacity, caveats=caveats)
+    except (TearsheetError, ValueError) as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+
+    rendered = {"text": to_text, "markdown": to_markdown, "html": to_html}[fmt](sheet)
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(rendered, encoding="utf-8")
+        console.print(f"[green]wrote[/green] {output}  ({len(rendered):,} bytes)")
+    else:
+        console.print(rendered, highlight=False, markup=False)
+
+    # Exit non-zero when the tearsheet says the result is not evidence, so a
+    # scripted sweep cannot treat a disqualified strategy as a success.
+    if sheet.is_disqualified:
+        raise typer.Exit(code=1)
 
 
 @app.command()
