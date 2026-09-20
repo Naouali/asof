@@ -1,0 +1,262 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuantLab — research</title>
+<style>
+  :root { color-scheme: light dark; --fg:#12151a; --bg:#fbfbfa; --muted:#6a7280;
+          --line:#e2e4e8; --ok:#1a7f4b; --warn:#9a6300; --fail:#b3261e; --card:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e6e8ea; --bg:#121417; --muted:#9aa2ad; --line:#2a2f36;
+            --ok:#4cc38a; --warn:#e2a03f; --fail:#f2555a; --card:#191c21; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px 16px 64px; background:var(--bg); color:var(--fg);
+         font:14px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 2px; letter-spacing:-0.01em; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing:.07em;
+       color: var(--muted); margin: 32px 0 10px; font-weight:600; }
+  .sub { color: var(--muted); margin: 0 0 4px; }
+  .card { background: var(--card); border:1px solid var(--line); border-radius:10px;
+          padding: 2px 14px; }
+  .row { display:flex; gap:12px; align-items:baseline; padding:10px 0;
+         border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .row:last-child { border-bottom:0; }
+  .name { font-weight:600; min-width:150px; }
+  .detail { color: var(--fg); flex:1 1 260px; }
+  .hint { color: var(--muted); flex-basis:100%; font-size:13px; }
+  .pill { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+          padding:2px 7px; border-radius:99px; border:1px solid currentColor; }
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .fail{color:var(--fail)}
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line);
+          vertical-align:top; font-size:13px; }
+  th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase;
+       letter-spacing:.06em; }
+  .scroll { overflow-x:auto; }
+  code { font:12px ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .note { border-left:3px solid var(--warn); padding:10px 14px; color:var(--muted);
+          background:var(--card); border-radius:0 8px 8px 0; margin-top:10px; }
+</style>
+<style>
+  .tabs { display:flex; gap:4px; margin:18px 0 0; flex-wrap:wrap; }
+  .tab { padding:7px 14px; border:1px solid var(--line); border-bottom:0;
+         border-radius:8px 8px 0 0; background:var(--bg); cursor:pointer;
+         font-size:13px; color:var(--muted); }
+  .tab.on { background:var(--card); color:var(--fg); font-weight:600; }
+  .panel { display:none; background:var(--card); border:1px solid var(--line);
+           border-radius:0 10px 10px 10px; padding:16px; }
+  .panel.on { display:block; }
+  label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px;
+          text-transform:uppercase; letter-spacing:.05em; font-weight:600; }
+  input, select, textarea { width:100%; padding:8px 10px; font:13px ui-sans-serif,system-ui,sans-serif;
+          background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:7px; }
+  textarea { font:12px ui-monospace,Menlo,monospace; min-height:64px; resize:vertical; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:0 14px; }
+  button { margin-top:14px; padding:9px 18px; border-radius:7px; border:1px solid var(--fg);
+           background:var(--fg); color:var(--bg); font-weight:600; font-size:13px; cursor:pointer; }
+  button:disabled { opacity:.45; cursor:progress; }
+  .out { margin-top:16px; }
+  .verdict { padding:12px 14px; border-radius:8px; border-left:3px solid var(--muted);
+             background:var(--bg); white-space:pre-wrap; font-size:13px; }
+  .verdict.bad { border-left-color:var(--fail); }
+  .verdict.good { border-left-color:var(--ok); }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .counter { float:right; font-size:12px; color:var(--muted); font-weight:400;
+             text-transform:none; letter-spacing:0; }
+  .err { color:var(--fail); }
+</style>
+
+<div class="wrap">
+  <h1>QuantLab</h1>
+  <p class="sub">v{{ version }} &middot; research and paper trading only &middot; no live order routing</p>
+
+  <div class="tabs">
+    <div class="tab on" data-tab="signal">Signal</div>
+    <div class="tab" data-tab="sweep">Sweep</div>
+    <div class="tab" data-tab="backtest">Backtest</div>
+    <div class="tab" data-tab="trials">Trials</div>
+  </div>
+
+  <!-- ------------------------------------------------------------ signal -->
+  <div class="panel on" id="p-signal">
+    <div class="grid">
+      <div>
+        <label for="s-signal">Signal</label>
+        <select id="s-signal"></select>
+      </div>
+      <div>
+        <label for="s-asof">As of</label>
+        <input id="s-asof" value="{{ today }}">
+      </div>
+    </div>
+    <label for="s-symbols">Instruments <span class="counter">blank = everything in the lake</span></label>
+    <input id="s-symbols" placeholder="SPY, QQQ, TLT">
+    <button onclick="runSignal()">Compute scores</button>
+    <div class="out" id="o-signal"></div>
+  </div>
+
+  <!-- ------------------------------------------------------------- sweep -->
+  <div class="panel" id="p-sweep">
+    <p class="hint" style="margin:0 0 6px">
+      Every cell is a trial. The spread across cells is judged against the null that
+      the signal has no edge anywhere &mdash; under which Var(t) = 1. Expect nothing
+      to survive; on pure noise a naive |t| &ge; 2 read reports a winner 54% of the time.
+    </p>
+    <div class="grid">
+      <div>
+        <label for="w-signal">Signal <span class="counter">blank = built-in trend</span></label>
+        <select id="w-signal"><option value="">(built-in trend rule)</option></select>
+      </div>
+      <div>
+        <label for="w-asof">As of</label>
+        <input id="w-asof" value="{{ today }}">
+      </div>
+    </div>
+    <label for="w-symbols">Instruments</label>
+    <input id="w-symbols" placeholder="blank = everything in the lake">
+    <label for="w-params">Parameter axes <span class="counter">needs a signal; one per line</span></label>
+    <textarea id="w-params" placeholder="vol_window=15,21,30,42,63,90,126"></textarea>
+    <button onclick="runSweep()">Run sweep</button>
+    <div class="out" id="o-sweep"></div>
+  </div>
+
+  <!-- ---------------------------------------------------------- backtest -->
+  <div class="panel" id="p-backtest">
+    <label for="b-config">Run config</label>
+    <input id="b-config" value="configs/backtest_example.yaml">
+    <p class="hint" style="margin:8px 0 0">
+      The tearsheet refuses to render without a trial count and a capacity estimate,
+      and orders its panels worst-first.
+    </p>
+    <button onclick="runBacktest()">Run backtest</button>
+    <div class="out" id="o-backtest"></div>
+  </div>
+
+  <!-- ------------------------------------------------------------ trials -->
+  <div class="panel" id="p-trials">
+    <p class="hint" style="margin:0 0 10px">
+      A browser makes it much cheaper to try one more idea, and every one is a trial
+      the next Sharpe ratio is deflated against. This is the running count.
+    </p>
+    <div id="o-trials"></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (x, d = 2) => (x === null || x === undefined) ? "—" : Number(x).toFixed(d);
+
+document.querySelectorAll(".tab").forEach(tab => tab.onclick = () => {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t === tab));
+  document.querySelectorAll(".panel").forEach(p =>
+    p.classList.toggle("on", p.id === "p-" + tab.dataset.tab));
+  if (tab.dataset.tab === "trials") loadTrials();
+});
+
+async function post(url, body, target, label) {
+  const button = event.target;
+  button.disabled = true;
+  $(target).innerHTML = `<p class="hint">${label}…</p>`;
+  try {
+    const res = await fetch(url, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    return await res.json();
+  } catch (e) {
+    $(target).innerHTML = `<p class="err">${e}</p>`;
+    return null;
+  } finally { button.disabled = false; }
+}
+
+function table(head, rows) {
+  return `<div class="scroll"><table><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr>`
+    + rows.join("") + `</table></div>`;
+}
+
+// ------------------------------------------------------------------ signal --
+async function runSignal() {
+  const d = await post("/api/run/signal", {
+    signal: $("s-signal").value, as_of: $("s-asof").value, symbols: $("s-symbols").value,
+  }, "o-signal", "Computing");
+  if (!d) return;
+  if (!d.ok) {
+    $("o-signal").innerHTML =
+      `<div class="verdict bad">${d.unavailable ? "This signal refuses to run:\n\n" : ""}${d.error}</div>`;
+    return;
+  }
+  const rows = d.scores.map(r =>
+    `<tr><td>${r.symbol}</td><td class="num">${r.score >= 0 ? "+" : ""}${fmt(r.score, 4)}</td></tr>`);
+  $("o-signal").innerHTML = table(["Instrument", "Score"], rows)
+    + `<p class="hint">${d.note}</p>`;
+}
+
+// ------------------------------------------------------------------- sweep --
+async function runSweep() {
+  const d = await post("/api/run/sweep", {
+    signal: $("w-signal").value, as_of: $("w-asof").value,
+    symbols: $("w-symbols").value, parameters: $("w-params").value,
+  }, "o-sweep", "Sweeping — this runs a real backtest per cell");
+  if (!d) return;
+  if (!d.ok) { $("o-sweep").innerHTML = `<div class="verdict bad">${d.error}</div>`; return; }
+
+  const rows = d.cells.map(c => `<tr>
+    <td>${c.name}</td>
+    <td class="num">${c.sharpe >= 0 ? "+" : ""}${fmt(c.sharpe)}</td>
+    <td class="num">${c.t >= 0 ? "+" : ""}${fmt(c.t)}</td>
+    <td class="num">${c.shrunk_t >= 0 ? "+" : ""}${fmt(c.shrunk_t)}</td>
+    <td>${c.survives ? '<span class="pill ok">survives</span>'
+        : (c.thin ? '<span class="hint">thin</span>' : "")}</td></tr>`);
+  $("o-sweep").innerHTML =
+    `<div class="verdict ${d.survivors.length ? "good" : "bad"}">${d.verdict}</div>`
+    + table([d.dimension, "Sharpe", "t", "t after shrinkage", ""], rows)
+    + `<p class="hint">${d.trials} trials &middot; Var(t) = ${fmt(d.variance)} &middot; `
+    + `shrinkage ${fmt(d.shrinkage)}</p>`;
+}
+
+// ---------------------------------------------------------------- backtest --
+async function runBacktest() {
+  const d = await post("/api/run/backtest", {config: $("b-config").value},
+                       "o-backtest", "Running — lake to ledger");
+  if (!d) return;
+  if (!d.ok) { $("o-backtest").innerHTML = `<div class="verdict bad">${d.error}</div>`; return; }
+
+  const h = d.headline;
+  const rows = [
+    ["Deflated Sharpe", fmt(h.deflated_sharpe, 3)],
+    ["After haircuts", fmt(h.sharpe_after_haircuts)],
+    ["Undeflated (net)", fmt(h.sharpe_undeflated_net)],
+    ["Trials", h.trials],
+    ["CAGR", (100 * h.cagr).toFixed(2) + "%"],
+    ["Max drawdown", (100 * h.max_drawdown).toFixed(2) + "%"],
+    ["Break-even AUM", h.break_even_aum ? "$" + (h.break_even_aum / 1e6).toFixed(1) + "m" : "none"],
+  ].map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`);
+
+  const warnings = (d.warnings || []).map(w => `<p class="note">${w}</p>`).join("");
+  $("o-backtest").innerHTML =
+    `<div class="verdict ${d.is_disqualified ? "bad" : "good"}">${d.verdict}</div>`
+    + table(["", ""], rows) + warnings;
+}
+
+// ------------------------------------------------------------------ trials --
+async function loadTrials() {
+  const d = await (await fetch("/api/trials")).json();
+  const rows = d.families.map(f => `<tr><td>${f.family}</td>
+    <td class="num">${f.trials}</td>
+    <td class="num">${fmt(f.best_sharpe)}</td></tr>`);
+  $("o-trials").innerHTML = rows.length
+    ? table(["Family", "Trials", "Best Sharpe"], rows) + `<p class="hint">${d.total} trials recorded.</p>`
+    : `<p class="hint">Nothing recorded yet.</p>`;
+}
+
+// ------------------------------------------------------------------- setup --
+(async () => {
+  const d = await (await fetch("/api/signals")).json();
+  for (const s of d.signals) {
+    const label = `${s.name} — tier ${s.tier}, ${s.evidence}`;
+    $("s-signal").add(new Option(label, s.name));
+    $("w-signal").add(new Option(label, s.name));
+  }
+})();
+</script>

@@ -1221,6 +1221,43 @@ def validate_anomalies(
 
 
 @app.command()
+def dashboard(
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to bind.")] = 8080,
+    host: Annotated[
+        str, typer.Option("--host", help="Interface to bind. Loopback by default.")
+    ] = "127.0.0.1",
+    reload: Annotated[bool, typer.Option("--reload", help="Reload on code changes.")] = False,
+) -> None:
+    """Serve the dashboard and the research UI on this machine.
+
+    Binds to loopback. There is **no authentication and no authorisation** here,
+    and the research endpoints run backtests on request, so binding it to a
+    reachable interface exposes an unauthenticated way to consume this machine's
+    CPU. Pass `--host 0.0.0.0` only on a network you control.
+
+    Nothing served here can route an order (spec section 1).
+    """
+    import uvicorn
+
+    scheme = f"http://{host}:{port}"
+    console.print(f"[bold]dashboard[/bold]  {scheme}/")
+    console.print(f"[bold]research [/bold]  {scheme}/research")
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        console.print(
+            f"[yellow]bound to {host}[/yellow] -- unauthenticated, and the research "
+            "endpoints run backtests on request"
+        )
+    uvicorn.run(
+        "quantlab.dashboard.app:create_app",
+        factory=True,
+        host=host,
+        port=port,
+        reload=reload,
+        log_config=None,
+    )
+
+
+@app.command()
 def report(
     config: Annotated[Path, typer.Option("--config", "-c", help="Run config YAML.")],
     output: Annotated[

@@ -252,6 +252,27 @@ space has been searched.
 That is the context a t-statistic needs before it means anything, and it is why
 this platform will not print a Sharpe without a trial count.
 
+## The local UI
+
+```bash
+quantlab dashboard          # http://127.0.0.1:8080
+```
+
+Two pages. `/` is read-only operational status — environment, heartbeats, lake,
+sources, paper books. `/research` is interactive: compute a signal's scores, sweep
+it across instruments or parameters, run a backtest and read its tearsheet, and
+see the running trial count.
+
+It binds to **loopback with no authentication**, and the research endpoints run
+backtests on request — so `--host 0.0.0.0` exposes an unauthenticated way to
+consume the machine. Nothing served can route an order.
+
+One deliberate design point: a browser drops the cost of trying one more idea from
+typing a command to clicking a button, and every idea tried is a trial the next
+Sharpe is deflated against. So the UI shows the trial count beside the results,
+warns *before* a sweep rather than after, and refuses a parameter grid larger than
+40 cells with the reason — that size of grid is a search of that size.
+
 ## Paper trading
 
 ```bash

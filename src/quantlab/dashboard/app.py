@@ -72,6 +72,51 @@ def _lake() -> list[dict[str, Any]]:
     return out
 
 
+def _symbol_list(value: object) -> list[str] | None:
+    """Symbols from a comma or whitespace separated box, or None for the lot."""
+    if not value:
+        return None
+    if isinstance(value, str):
+        text = value
+    elif isinstance(value, list):
+        text = ",".join(str(item) for item in value)
+    else:
+        return None
+    symbols = [part.strip().upper() for part in text.replace("\n", ",").split(",")]
+    kept = [s for s in symbols if s]
+    return kept or None
+
+
+def _parse_parameters(raw: str) -> dict[str, list[object]] | None:
+    """``name=v1,v2`` lines into a grid, or None if any line is malformed.
+
+    Returning None rather than skipping a bad line is deliberate: a typo that
+    silently drops an axis changes the size of the search, and the size of the
+    search is the number everything else is judged against.
+    """
+    axes: dict[str, list[object]] = {}
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        if "=" not in line:
+            return None
+        name, _, values = line.partition("=")
+        parsed = [_coerce_value(v.strip()) for v in values.split(",") if v.strip()]
+        if not name.strip() or not parsed:
+            return None
+        axes[name.strip()] = parsed
+    return axes or None
+
+
+def _coerce_value(text: str) -> object:
+    for cast in (int, float):
+        try:
+            return cast(text)
+        except ValueError:
+            continue
+    return text
+
+
 def _paper_books() -> list[dict[str, Any]]:
     """Every paper book's latest cycle.
 
@@ -162,9 +207,69 @@ def create_app() -> FastAPI:
             {"sources": [a.as_dict() for a in source_availability()], "count": len(SOURCES)}
         )
 
+    @app.get("/api/signals")
+    def api_signals() -> JSONResponse:
+        from quantlab.dashboard.actions import available_signals
+
+        return JSONResponse({"signals": available_signals()})
+
+    @app.get("/api/trials")
+    def api_trials() -> JSONResponse:
+        from quantlab.dashboard.actions import trial_summary
+
+        return JSONResponse(trial_summary())
+
+    @app.post("/api/run/signal")
+    def api_run_signal(body: dict[str, Any]) -> JSONResponse:
+        from quantlab.dashboard.actions import run_signal_scores, today
+
+        return JSONResponse(
+            run_signal_scores(
+                str(body.get("signal", "")),
+                str(body.get("as_of") or today()),
+                _symbol_list(body.get("symbols")),
+            )
+        )
+
+    @app.post("/api/run/sweep")
+    def api_run_sweep(body: dict[str, Any]) -> JSONResponse:
+        from quantlab.dashboard.actions import run_sweep, today
+
+        raw = str(body.get("parameters") or "").strip()
+        parameters = _parse_parameters(raw) if raw else None
+        if raw and parameters is None:
+            return JSONResponse(
+                {"ok": False, "error": "parameters must look like name=v1,v2 (one per line)"}
+            )
+        return JSONResponse(
+            run_sweep(
+                (str(body.get("signal")) or None) if body.get("signal") else None,
+                str(body.get("as_of") or today()),
+                _symbol_list(body.get("symbols")),
+                parameters,
+                int(body.get("lookback") or 252),
+            )
+        )
+
+    @app.post("/api/run/backtest")
+    def api_run_backtest(body: dict[str, Any]) -> JSONResponse:
+        from quantlab.dashboard.actions import run_backtest
+
+        return JSONResponse(run_backtest(str(body.get("config", ""))))
+
     @app.get("/api/paper")
     def api_paper() -> JSONResponse:
         return JSONResponse({"books": _paper_books()})
+
+    @app.get("/research", response_class=HTMLResponse, include_in_schema=False)
+    def research(request: Request) -> HTMLResponse:
+        from quantlab.dashboard.actions import today
+
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="research.html",
+            context={"version": __version__, "today": today()},
+        )
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def index(request: Request) -> HTMLResponse:

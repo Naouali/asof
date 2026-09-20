@@ -131,6 +131,9 @@ shell:  ## Open a shell in the worker container
 notebook:  ## Print the Jupyter URL
 	@echo "http://127.0.0.1:$${QUANTLAB_JUPYTER_PORT:-8888}/lab"
 
+serve:  ## Run the dashboard and research UI locally, without Docker
+	.venv/bin/quantlab dashboard --port $(or $(PORT),8080)
+
 dashboard:  ## Print the dashboard URL
 	@echo "http://127.0.0.1:$${QUANTLAB_DASHBOARD_PORT:-8080}"
 
