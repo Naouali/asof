@@ -360,3 +360,49 @@ band, downsampled to 600 points. There is no rolling Sharpe, no monthly return
 table, no underwater plot with dates. Those are useful and they are also where
 a reader's attention goes instead of to the deflation statistics, which is why
 the first version does not have them.
+
+## Positioning and fundamentals (Milestone 9)
+
+**COT release dates are derived, not observed.** No CFTC payload carries one, and
+the CFTC publishes no machine-readable release calendar — only the prose rule and
+a warning that "holidays can change the COT release schedule". The derivation
+here is the rule plus federal holiday arithmetic, rolled forward. It will be
+wrong for any ad-hoc delay the CFTC did not announce in a form this code can
+read, and the 2018–19 government shutdown is the known case: report dates run
+through it unbroken while publication was suspended for weeks. A COT signal
+backtested across that winter sees those reports about six weeks before they
+actually appeared. There is no free machine-readable record of the catch-up
+schedule, so this is not corrected — it is disclosed.
+
+**COT positioning is weekly, and that caps what it can support.** Fifty-two
+observations a year is a small sample for any parameter you fit, and the
+categories are reclassified from time to time, which creates level shifts that
+look exactly like signal. Normalise within a regime, not across one.
+
+**EDGAR covers US registrants only.** No foreign private issuer that files 20-F
+without XBRL, no ETF, no company that has deregistered. A universe built from
+what EDGAR returns today is a universe of current filers, so the survivorship
+problem is displaced rather than solved: the filings of a delisted company remain
+in EDGAR, but you have to know its CIK to ask, and the ticker mapping only lists
+live registrants.
+
+**XBRL coverage is biased by sector, not random.** Measured over five large
+filers: revenue, total assets, book equity and interest expense present for all
+five; cost of goods sold for three. JPMorgan has none because banks do not report
+one. Dropping filers with missing line items therefore drops financials, and a
+profitability screen built this way is implicitly a screen against banks.
+
+**Tagging practice changed around 2012**, and small filers tag inconsistently
+throughout. A long backtest on EDGAR fundamentals is running on a materially
+different data-generating process before and after that boundary, and the early
+period is both thinner and tilted toward large, well-reported companies.
+
+**Only one XBRL tag per metric is read.** Where a filer reports a concept under a
+tag not in the precedence list, that metric is simply absent for them rather than
+approximated from a near-neighbour. That is deliberate — the alternative is
+silently summing things that are not the same — but it means coverage is a
+function of the tag list, which is short.
+
+**The fundamentals universe is fifteen companies.** Each company's facts payload
+is several megabytes, so the default is small enough to ingest politely. Nothing
+here has been validated at the scale a real cross-sectional equity strategy needs.

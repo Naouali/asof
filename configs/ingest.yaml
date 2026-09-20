@@ -64,6 +64,20 @@ jobs:
     symbols: [aapl.us, msft.us]
 
   # --------------------------------------------------------- academic factors --
+  # ----------------------------------------------------------- fundamentals ----
+  # The only free source of AS-FILED fundamentals. `as_of` is the period end and
+  # `known_at` is the filing date, so a backtest sees 2015 through 2015's eyes
+  # rather than through today's restatements. No API key -- EDGAR asks only for a
+  # User-Agent with real contact details (QUANTLAB_HTTP_USER_AGENT).
+  #
+  # The universe is short deliberately: each company's facts payload is several
+  # megabytes (Apple's is 3.8 MB), so widening this to thousands of tickers is
+  # gigabytes of download and an hour of polite pacing.
+  - fetcher: sec_edgar.fundamentals
+    description: As-filed US company fundamentals from the XBRL company-facts API.
+    start: "2010-01-01"
+    symbols: [AAPL, MSFT, JNJ, KO, PG, XOM, JPM, PFE, WMT, HD, CVX, MRK, PEP, CSCO, INTC]
+
   # ------------------------------------------------------------ positioning ----
   # Weekly futures positioning. `as_of` is the Tuesday snapshot and `known_at` is
   # the Friday 15:30 ET release -- a three-day gap that is the most common

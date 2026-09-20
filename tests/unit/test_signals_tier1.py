@@ -464,7 +464,11 @@ def test_profitability_scores_a_real_cross_section(store) -> None:
                     "metric": metric,
                     "value": value,
                     "unit": "USD",
-                    "fiscal_period": "FY2019",
+                    # Stocks are instants; flows span a year. The labels are the
+                    # spans themselves -- the period end is already in as_of.
+                    "fiscal_period": (
+                        "instant" if metric in ("total_assets", "book_equity") else "FY"
+                    ),
                     "form": "10-K",
                 }
             )
@@ -493,7 +497,7 @@ def test_profitability_respects_the_filed_date(store) -> None:
             "metric": metric,
             "value": value,
             "unit": "USD",
-            "fiscal_period": "FY2019",
+            "fiscal_period": "instant" if metric == "total_assets" else "FY",
             "form": "10-K",
         }
         for metric, value in (
@@ -541,3 +545,176 @@ def test_trend_scores_a_real_price_history(store) -> None:
     scores = TimeSeriesMomentum().compute(store.as_of("2021-03-01"), ["UP"])
     assert scores.height == 1
     assert scores["score"].item() > 1.0
+
+
+# ----------------------------------------------------------------------------------
+# Profitability: choosing a consistent reporting basis
+# ----------------------------------------------------------------------------------
+def fundamentals_frame(rows: list[dict[str, object]]) -> pl.DataFrame:
+    """A fundamentals frame in the shape EDGAR produces."""
+    return pl.DataFrame(
+        [
+            {
+                "source": "sec_edgar",
+                "dataset": "fundamentals",
+                "ingested_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+                "unit": "USD",
+                "form": "10-K",
+                **row,
+            }
+            for row in rows
+        ]
+    )
+
+
+def test_annual_flows_are_not_mixed_with_year_to_date_ones() -> None:
+    """The bug this selector exists for, and it inverted a live ranking.
+
+    EDGAR reports revenue over 3-, 6-, 9- and 12-month windows in the same
+    filing. Taking the most recently filed value per metric picked nine-month
+    revenue against an instantaneous balance sheet. On the real fifteen-company
+    universe that moved Walmart from last place (-0.29) to first (+0.58), and
+    for Apple it understated gross profitability by 16%.
+    """
+    from quantlab.signals.equity.profitability import select_annual
+
+    as_of = dt.datetime(2026, 9, 18, tzinfo=dt.UTC)
+    frame = fundamentals_frame(
+        [
+            # The nine-month figure is filed LAST, so a naive pick takes it.
+            {
+                "symbol": "AAA",
+                "metric": "revenue",
+                "value": 400.0,
+                "fiscal_period": "FY",
+                "as_of": dt.datetime(2025, 9, 30, tzinfo=dt.UTC),
+                "known_at": dt.datetime(2025, 11, 1, tzinfo=dt.UTC),
+            },
+            {
+                "symbol": "AAA",
+                "metric": "revenue",
+                "value": 300.0,
+                "fiscal_period": "9M",
+                "as_of": dt.datetime(2026, 6, 30, tzinfo=dt.UTC),
+                "known_at": dt.datetime(2026, 8, 1, tzinfo=dt.UTC),
+            },
+            {
+                "symbol": "AAA",
+                "metric": "total_assets",
+                "value": 1000.0,
+                "fiscal_period": "instant",
+                "as_of": dt.datetime(2026, 6, 30, tzinfo=dt.UTC),
+                "known_at": dt.datetime(2026, 8, 1, tzinfo=dt.UTC),
+            },
+        ]
+    )
+
+    picked = select_annual(frame, as_of=as_of, max_staleness=dt.timedelta(days=548))
+    values = dict(zip(picked["metric"], picked["value"], strict=True))
+
+    assert values["revenue"] == 400.0, "the annual figure, not the nine-month one"
+    assert values["total_assets"] == 1000.0, "stocks come from the latest instant"
+
+
+def test_stocks_take_the_latest_instant_and_flows_the_latest_year() -> None:
+    from quantlab.signals.equity.profitability import select_annual
+
+    as_of = dt.datetime(2026, 9, 18, tzinfo=dt.UTC)
+    frame = fundamentals_frame(
+        [
+            {
+                "symbol": "AAA",
+                "metric": "book_equity",
+                "value": 100.0,
+                "fiscal_period": "instant",
+                "as_of": dt.datetime(2025, 12, 31, tzinfo=dt.UTC),
+                "known_at": dt.datetime(2026, 2, 1, tzinfo=dt.UTC),
+            },
+            {
+                "symbol": "AAA",
+                "metric": "book_equity",
+                "value": 120.0,
+                "fiscal_period": "instant",
+                "as_of": dt.datetime(2026, 6, 30, tzinfo=dt.UTC),
+                "known_at": dt.datetime(2026, 8, 1, tzinfo=dt.UTC),
+            },
+        ]
+    )
+
+    picked = select_annual(frame, as_of=as_of, max_staleness=dt.timedelta(days=548))
+    assert picked["value"].to_list() == [120.0]
+
+
+def test_a_stale_line_item_is_dropped_not_carried_forward() -> None:
+    """Spec section 13 forbids forward-filling fundamentals without a documented
+    staleness limit. Without one, a company that stops reporting a line item
+    keeps its last value for ever -- Apple's interest expense was last filed in
+    2023 and was still being scored in 2026."""
+    from quantlab.signals.equity.profitability import select_annual
+
+    as_of = dt.datetime(2026, 9, 18, tzinfo=dt.UTC)
+    frame = fundamentals_frame(
+        [
+            {
+                "symbol": "AAA",
+                "metric": "interest_expense",
+                "value": 5.0,
+                "fiscal_period": "FY",
+                "as_of": dt.datetime(2023, 9, 30, tzinfo=dt.UTC),
+                "known_at": dt.datetime(2023, 11, 1, tzinfo=dt.UTC),
+            },
+            {
+                "symbol": "AAA",
+                "metric": "revenue",
+                "value": 400.0,
+                "fiscal_period": "FY",
+                "as_of": dt.datetime(2025, 9, 30, tzinfo=dt.UTC),
+                "known_at": dt.datetime(2025, 11, 1, tzinfo=dt.UTC),
+            },
+        ]
+    )
+
+    picked = select_annual(frame, as_of=as_of, max_staleness=dt.timedelta(days=548))
+    assert picked["metric"].to_list() == ["revenue"]
+
+
+def test_the_staleness_window_keeps_a_company_scoreable_for_a_year() -> None:
+    """A 10-K filed three months after year end should still score eleven months
+    later; a tighter window would rank companies on how recently they filed."""
+    from quantlab.signals.equity.profitability import DEFAULT_MAX_STALENESS, select_annual
+
+    year_end = dt.datetime(2025, 12, 31, tzinfo=dt.UTC)
+    frame = fundamentals_frame(
+        [
+            {
+                "symbol": "AAA",
+                "metric": "revenue",
+                "value": 400.0,
+                "fiscal_period": "FY",
+                "as_of": year_end,
+                "known_at": dt.datetime(2026, 3, 1, tzinfo=dt.UTC),
+            }
+        ]
+    )
+
+    still_fresh = year_end + dt.timedelta(days=500)
+    assert select_annual(frame, as_of=still_fresh, max_staleness=DEFAULT_MAX_STALENESS).height == 1
+
+    too_old = year_end + dt.timedelta(days=600)
+    assert select_annual(frame, as_of=too_old, max_staleness=DEFAULT_MAX_STALENESS).height == 0
+
+
+def test_an_empty_frame_survives_selection() -> None:
+    from quantlab.signals.equity.profitability import select_annual
+
+    empty = pl.DataFrame(
+        {"symbol": [], "metric": [], "value": [], "fiscal_period": [], "as_of": []}
+    )
+    assert (
+        select_annual(
+            empty,
+            as_of=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+            max_staleness=dt.timedelta(days=548),
+        ).height
+        == 0
+    )

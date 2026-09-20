@@ -27,6 +27,7 @@ own arithmetic, and refuses to run.
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -50,7 +51,13 @@ from quantlab.signals.base import (
 if TYPE_CHECKING:  # pragma: no cover
     from quantlab.data.pit import Snapshot
 
-__all__ = ["EquityProfitability", "ProfitabilityMeasure", "profitability"]
+__all__ = [
+    "DEFAULT_MAX_STALENESS",
+    "EquityProfitability",
+    "ProfitabilityMeasure",
+    "profitability",
+    "select_annual",
+]
 
 log = get_logger("quantlab.signals.equity.profitability")
 
@@ -116,6 +123,57 @@ def profitability(data: Fundamentals, measure: ProfitabilityMeasure) -> float | 
     if not _present(data.accruals):
         return None
     return (operating - float(data.accruals or 0.0)) / equity
+
+
+#: Flows -- measured over a window -- and stocks, measured at an instant. Mixing
+#: the two spans is the failure this selector exists to prevent.
+FLOW_METRICS = frozenset(
+    {"revenue", "cost_of_goods_sold", "sg_and_a", "interest_expense", "accruals"}
+)
+STOCK_METRICS = frozenset({"total_assets", "book_equity"})
+
+#: How stale an annual figure may be before it is dropped. Eighteen months allows
+#: a company that files its 10-K three months after year end to remain scoreable
+#: for a full year afterwards; beyond that the number describes a different
+#: business. Spec section 13 forbids forward-filling fundamentals without a
+#: documented limit, and this is the limit.
+DEFAULT_MAX_STALENESS = dt.timedelta(days=548)
+
+
+def select_annual(
+    frame: pl.DataFrame, *, as_of: dt.datetime, max_staleness: dt.timedelta
+) -> pl.DataFrame:
+    """One value per (symbol, metric), on a consistent annual basis.
+
+    Three mistakes are avoided here, and the first two were live before EDGAR
+    made the spans visible.
+
+    *Spans are not mixed.* EDGAR reports the same metric over 3-, 6-, 9- and
+    12-month windows in the same filing. Taking the most recently filed value per
+    metric picked nine-month revenue, a single quarter's SG&A and an instantaneous
+    balance sheet, then divided one by the other. For Apple that understated gross
+    profitability by 16%, and operating profitability -- a quarter's costs against
+    nine months of revenue -- was not a ratio of anything.
+
+    *Flows come from the annual figure, stocks from the latest instant.* A
+    year of revenue belongs against the assets that produced it.
+
+    *Stale figures are dropped rather than carried.* Without a limit, a company
+    that stopped reporting a line item keeps its last value for ever and scores
+    on it; Apple's interest expense was last filed in 2023.
+    """
+    if frame.height == 0:
+        return frame
+
+    basis = (
+        pl.when(pl.col("metric").is_in(list(STOCK_METRICS)))
+        .then(pl.lit("instant"))
+        .otherwise(pl.lit("FY"))
+    )
+    on_basis = frame.filter(pl.col("fiscal_period") == basis)
+
+    fresh = on_basis.filter(pl.col("as_of") >= as_of - max_staleness)
+    return fresh.sort("as_of", "known_at").group_by("symbol", "metric").agg(pl.col("value").last())
 
 
 def _present(value: float | None) -> bool:
@@ -190,8 +248,14 @@ class EquityProfitability(Signal):
         ),
     )
 
-    def __init__(self, measure: ProfitabilityMeasure = ProfitabilityMeasure.GROSS) -> None:
+    def __init__(
+        self,
+        measure: ProfitabilityMeasure = ProfitabilityMeasure.GROSS,
+        *,
+        max_staleness: dt.timedelta = DEFAULT_MAX_STALENESS,
+    ) -> None:
         self.measure = measure
+        self.max_staleness = max_staleness
 
     def compute(self, snapshot: Snapshot, symbols: Sequence[str]) -> pl.DataFrame:
         frame = snapshot.frame("fundamentals", symbols=list(symbols))
@@ -204,8 +268,15 @@ class EquityProfitability(Signal):
                 "no view rather than like missing data."
             )
 
-        latest = frame.sort("known_at").group_by("symbol", "metric").agg(pl.col("value").last())
-        wide = latest.pivot(index="symbol", on="metric", values="value")
+        selected = select_annual(frame, as_of=snapshot.as_of, max_staleness=self.max_staleness)
+        if selected.height == 0:
+            raise SignalUnavailableError(
+                f"{self.spec.name}: the lake holds fundamentals at "
+                f"{snapshot.as_of:%Y-%m-%d} but none within "
+                f"{self.max_staleness.days} days of it. Scoring on older figures "
+                "would rank companies on how recently they filed."
+            )
+        wide = selected.pivot(index="symbol", on="metric", values="value")
 
         scores: dict[str, float] = {}
         for row in wide.iter_rows(named=True):
