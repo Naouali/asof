@@ -974,6 +974,106 @@ def backtest(
         console.print(f"[green]wrote[/green] {output}")
 
 
+@validate_app.command("sweep")
+def validate_sweep(
+    symbols: Annotated[
+        list[str] | None, typer.Option("--symbol", "-s", help="Instrument. Repeatable.")
+    ] = None,
+    as_of: Annotated[str, typer.Option("--as-of", help="Point-in-time date.")] = "2026-09-18",
+    lookback: Annotated[int, typer.Option("--lookback", help="Trend lookback in bars.")] = 252,
+    cost_bps: Annotated[
+        float, typer.Option("--cost-bps", help="Cost charged per position flip.")
+    ] = 2.0,
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write the cell table here.")
+    ] = None,
+) -> None:
+    """Test a signal instrument by instrument, and distrust the winners.
+
+    The most natural question to ask of an idea is whether it works everywhere or
+    only on some names, and it is the most dangerous one to answer by reading a
+    table. Test anything across fourteen instruments and the dispersion alone
+    hands you a best one; across five hundred you are guaranteed something above
+    t = 4.
+
+    So every cell counts as a trial, and the spread across cells is judged
+    against the null that the signal has no edge anywhere -- under which the
+    cross-sectional variance of the t-statistics is exactly 1. Anything beyond
+    that is real heterogeneity and is kept. Anything at or below it is shrunk to
+    nothing, however good the best cell looked.
+
+    Expect nothing to survive. A sweep that finds survivors is unusual, which is
+    the reason to run one rather than trust the table.
+    """
+    from quantlab.data.store import Store
+    from quantlab.validation.sweep import cell_returns_from_prices, sweep_returns
+
+    store = Store(get_settings().layout)
+    universe = symbols or sorted(store.symbols("ohlcv_daily"))
+    if len(universe) < 2:
+        err_console.print(
+            "[red]a sweep needs at least two instruments[/red] -- with one there is "
+            "no dispersion to judge against, and the result is just a backtest."
+        )
+        raise typer.Exit(code=2)
+
+    bars = store.as_of(as_of).ohlcv_daily(symbols=universe)
+    if bars.height == 0:
+        err_console.print(f"[red]no bars for those instruments at {as_of}[/red]")
+        raise typer.Exit(code=2)
+
+    wide = bars.sort("as_of").pivot(index="as_of", on="symbol", values="adj_close").drop_nulls()
+    prices = {c: wide[c].to_numpy() for c in wide.columns if c != "as_of"}
+    if len(prices) < 2:
+        err_console.print(
+            f"[red]only {len(prices)} instrument(s) have a complete history[/red] -- "
+            "the rest were dropped for gaps"
+        )
+        raise typer.Exit(code=2)
+
+    try:
+        result = sweep_returns(
+            cell_returns_from_prices(prices, lookback=lookback, cost_bps_per_turn=cost_bps),
+            signal=f"trend({lookback})",
+            dimension="instrument",
+        )
+    except ValueError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("instrument")
+    table.add_column("Sharpe", justify="right")
+    table.add_column("t", justify="right")
+    table.add_column("t after shrinkage", justify="right")
+    table.add_column("")
+    for cell in sorted(result.cells, key=lambda c: -abs(c.t_statistic)):
+        table.add_row(
+            cell.name,
+            f"{cell.sharpe:+.2f}",
+            f"{cell.t_statistic:+.2f}",
+            f"{cell.shrunk_t:+.2f}",
+            "[green]SURVIVES[/green]"
+            if cell.survives
+            else ("[dim]thin[/dim]" if cell.thin else ""),
+        )
+    console.print(table)
+    console.print()
+    console.print(result.verdict())
+    console.print()
+    console.print(f"[dim]{result.adjustment.describe()}[/dim]")
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        result.to_frame().write_csv(output)
+        console.print(f"\n[green]wrote[/green] {output}")
+
+    # Non-zero when nothing survives, so a scripted search cannot treat an
+    # exhausted sweep as a success.
+    if not result.survivors:
+        raise typer.Exit(code=1)
+
+
 @validate_app.command("anomalies")
 def validate_anomalies(
     t_stat: Annotated[

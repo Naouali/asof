@@ -199,6 +199,34 @@ NOT EVIDENCE that etf-momentum-12-1 works:
 
 That is a real result on real data, and printing it is the point.
 
+## Does it work everywhere, or only on some names?
+
+The most natural question to ask of an idea, and the most dangerous one to answer
+by reading a table.
+
+```bash
+quantlab validate sweep --as-of 2026-09-18
+```
+
+Every cell is a trial, and the spread across cells is judged against the null that
+the signal has no edge anywhere — under which the cross-sectional variance of the
+t-statistics is exactly 1. Real heterogeneity is kept; anything at or below chance
+is shrunk to nothing, however good the best cell looked.
+
+On 29 instruments of trend: QQQ tops the table at t = +1.98, `Var(t) = 0.55`, and
+**nothing survives**. QQQ is the maximum of 29 noisy draws, not an instrument the
+signal suits.
+
+The measured value of that correction, over 200 sweeps of 14 pure-noise cells:
+
+| | sweeps reporting a "winner" |
+| --- | --- |
+| naive \|t\| ≥ 2 | **109 / 200 (54%)** |
+| after the correction | **1 cell in 2,800** |
+
+That is the difference between a search that finds something every other time you
+run it and one that almost never does.
+
 ## What the literature already tried
 
 ```bash
