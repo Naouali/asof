@@ -1,10 +1,24 @@
-# QuantLab
+# asof
 
-A multi-asset market data ETL built entirely on free data sources, and an app for
-reading what it collects. It connects to external APIs, fetches their data, and
-lands it in a local parquet lake that is queried in-process by DuckDB. The app,
-**asof**, reads the disclosure data in that lake: who traded, and when the world
-could first have known.
+Who traded, and when the world could first have known.
+
+Company insiders, large funds and members of the US House all have to disclose
+their trades — days, weeks or months after making them. **asof** collects those
+disclosures from their official sources, keeps both dates for every one of them,
+and shows the result as a feed, a timeline and a price chart that can be wound
+back to any past day to see exactly what was public then and what was not.
+
+It is two things in one repository:
+
+- **The app** — a read-only web interface over the disclosure data. See
+  [The app](#the-app).
+- **The ETL underneath it** — twenty fetchers over sixteen free sources
+  (disclosures, prices, fundamentals, macro, crypto, options), landing in a local
+  parquet lake that DuckDB queries in-process. Everything the app needs is
+  fetched without an API key.
+
+The package and its command are still called `quantlab`; they are being renamed
+to `asof`. Every command below is written as it works today.
 
 Two properties are enforced structurally rather than left to discipline:
 
@@ -49,7 +63,7 @@ The catalogue also documents sources that have no fetcher yet.
 Docker is the only prerequisite.
 
 ```bash
-git clone <this repo> && cd quantlab
+git clone <this repo> && cd QuantBox
 cp .env.example .env     # optional: the stack runs unchanged, with zero API keys
 make up                  # builds images, starts worker + scheduler + web, runs doctor
 make ingest              # the app is empty until there is data to read
@@ -214,6 +228,12 @@ gap between the day somebody traded and the day anyone else could know.
   and the settlement fails.
 - **Data health.** What the lake holds, how fresh it is, and which House reports
   were scans that could not be read.
+- **Landing page**, at `/welcome`. One screen, no scrolling, and no mock-ups: the
+  three panels run on the real lake. Drag the as-of line across a timeline of
+  trades and watch the count of those not yet public change; read a price chart
+  with its disclosure chords; adjust the weights of a portfolio estimated from a
+  member's disclosed trades. Its buttons deliberately do nothing yet — there is
+  no sign-up flow behind them.
 
 ```bash
 make up                         # with Docker: http://127.0.0.1:8080
@@ -231,6 +251,21 @@ starts an ingest or touches the network.
 > behind something that authenticates before exposing it. Team features that
 > need to know who you are (notes, alerts, saved views) are deliberately absent
 > rather than faked.
+
+### Not built yet
+
+These are where the product is going. None of them exists today, and the app
+does not pretend otherwise.
+
+- **Chart information.** Richer price charts on the ticker page.
+- **Cloning a portfolio.** Rebuild what a member of Congress appears to hold from
+  their disclosed trades, then adjust it and keep it as your own. Only the
+  preview on the landing page exists, and it is an estimate: the House discloses
+  value ranges, not amounts, and never a starting position.
+- **Login and teams.** Accounts, shared notes, alerts and saved views.
+- **Pages for a person and for a fund.** Today only a ticker has its own page.
+- **The Senate.** Its disclosure site refuses automated clients, so it is
+  catalogued and not fetched.
 
 ## Running with no API keys
 
@@ -262,18 +297,41 @@ placeholder.
 5. Add a job to `configs/ingest.yaml`, then run
    `python scripts/gen_data_catalogue.py` to refresh the catalogue document.
 
+## Developing
+
+```bash
+make check         # everything CI runs for Python: lint, type-check, tests
+make ui-check      # type-check and test the interface
+make format        # auto-format (writes to the working tree)
+make lock          # rewrite uv.lock after editing pyproject.toml
+```
+
+Those run in Docker. In a local environment, run the tests as
+`python -m pytest`, not bare `pytest`: the test modules import shared helpers
+from `tests.conftest`, which needs the repository root on the import path. The
+unit suite blocks all network access; the Docker integration tests are excluded
+unless asked for.
+
 ## Layout
 
 ```
 ui/                 the interface: React + TypeScript, no UI kit, built by Vite
+  src/pages/        feed, ticker, data health, landing
+  src/components/   the shell, as-of control, lag bar, record, timeline, price chart
+  src/styles.css    every style in the app, hand-written
 src/quantlab/
   api/              the web app: read-only API over the lake, serves ui/dist
+    app.py          routes, security headers, one cached lens per as-of date
     events.py       one shape for three kinds of disclosure
     queries.py      what each page asks of the lake, through one as-of "lens"
+    models.py       the shapes the API returns
   cli.py            the `quantlab` command
   scheduler.py      cron-style runner for recurring ingests
+  runtime.py        heartbeats, so a healthcheck can tell a stuck process from a live one
   health.py         `quantlab doctor`
   config.py         settings, read from QUANTLAB_* environment variables
+  paths.py          where the lake and state live, in a container or on a laptop
+  logging.py        structured logs; a degraded ingest is an explicit event
   data/
     sources/        one module per external API (sec_filings.py is shared EDGAR plumbing)
     ingest.py       ingest plans and incremental windows
@@ -286,6 +344,11 @@ src/quantlab/
 configs/
   ingest.yaml       what to fetch
   schedule.yaml     when to fetch it
+docker/             the base, worker and web images
+scripts/            gen_data_catalogue.py, which writes docs/DATA_CATALOGUE.md
+tests/
+  unit/             offline, against recorded payloads in tests/fixtures/
+  integration/      against the running Docker stack
 ```
 
 ## Documentation
