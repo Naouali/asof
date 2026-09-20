@@ -205,7 +205,9 @@ The most natural question to ask of an idea, and the most dangerous one to answe
 by reading a table.
 
 ```bash
-quantlab validate sweep --as-of 2026-09-18
+quantlab validate sweep                                   # across instruments
+quantlab validate sweep --signal trend.time_series_momentum \
+    --param vol_window=15,21,30,42,63,90,126              # across parameters
 ```
 
 Every cell is a trial, and the spread across cells is judged against the null that
@@ -226,6 +228,13 @@ The measured value of that correction, over 200 sweeps of 14 pure-noise cells:
 
 That is the difference between a search that finds something every other time you
 run it and one that almost never does.
+
+**One subtlety the tool states rather than hides.** The null assumes cells are
+*independent*; under it Var(t) = 1. Correlated cells move together and push it
+toward 0. So a very low variance does not mean "tested many ways and failed" — it
+means the cells were nearly the same experiment. Sweeping seven `vol_window`
+values gives Var(t) = 0.01, and the honest reading is that the parameter does not
+matter, not that the signal was tested seven ways.
 
 ## What the literature already tried
 

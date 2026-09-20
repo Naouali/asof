@@ -976,37 +976,58 @@ def backtest(
 
 @validate_app.command("sweep")
 def validate_sweep(
+    signal: Annotated[
+        str | None,
+        typer.Option("--signal", help="Registered signal. Omit for the built-in trend rule."),
+    ] = None,
+    param: Annotated[
+        list[str] | None,
+        typer.Option("--param", "-p", help="Parameter axis, e.g. lookback=63,126,252."),
+    ] = None,
     symbols: Annotated[
         list[str] | None, typer.Option("--symbol", "-s", help="Instrument. Repeatable.")
     ] = None,
     as_of: Annotated[str, typer.Option("--as-of", help="Point-in-time date.")] = "2026-09-18",
-    lookback: Annotated[int, typer.Option("--lookback", help="Trend lookback in bars.")] = 252,
+    lookback: Annotated[
+        int, typer.Option("--lookback", help="Trend lookback, built-in rule only.")
+    ] = 252,
     cost_bps: Annotated[
-        float, typer.Option("--cost-bps", help="Cost charged per position flip.")
+        float, typer.Option("--cost-bps", help="Cost charged per unit of turnover.")
     ] = 2.0,
     output: Annotated[
         Path | None, typer.Option("--output", "-o", help="Write the cell table here.")
     ] = None,
 ) -> None:
-    """Test a signal instrument by instrument, and distrust the winners.
+    """Search across instruments or parameters, and distrust the winners.
 
-    The most natural question to ask of an idea is whether it works everywhere or
-    only on some names, and it is the most dangerous one to answer by reading a
-    table. Test anything across fourteen instruments and the dispersion alone
-    hands you a best one; across five hundred you are guaranteed something above
-    t = 4.
+    Two modes, and the second is the dangerous one:
 
-    So every cell counts as a trial, and the spread across cells is judged
-    against the null that the signal has no edge anywhere -- under which the
-    cross-sectional variance of the t-statistics is exactly 1. Anything beyond
-    that is real heterogeneity and is kept. Anything at or below it is shrunk to
-    nothing, however good the best cell looked.
+    *Across instruments* (the default). Does the idea work everywhere or only on
+    some names? Test anything on fourteen instruments and the dispersion alone
+    hands you a best one.
 
-    Expect nothing to survive. A sweep that finds survivors is unusual, which is
-    the reason to run one rather than trust the table.
+    *Across parameters* (`--signal X --param lookback=63,126,252`). Runs the real
+    registered signal once per parameter set. This is where overfitting actually
+    happens -- "we tried five lookbacks and 252 was best" is the classic -- so
+    every cell is a trial recorded under one shared family, and the best one is
+    deflated against the whole grid rather than against itself.
+
+    In both modes the spread across cells is judged against the null that the
+    signal has no edge anywhere, under which the cross-sectional variance of the
+    t-statistics is exactly 1. Real heterogeneity is kept; anything at or below
+    chance is shrunk to nothing, however good the best cell looked.
+
+    Expect nothing to survive. Measured on pure noise, a naive |t| >= 2 read of
+    fourteen cells reports a winner 54% of the time; after this correction, one
+    cell in 2,800.
     """
     from quantlab.data.store import Store
-    from quantlab.validation.sweep import cell_returns_from_prices, sweep_returns
+    from quantlab.validation.sweep import (
+        cell_returns_from_prices,
+        parameter_grid,
+        sweep_returns,
+        sweep_signal_parameters,
+    )
 
     store = Store(get_settings().layout)
     universe = symbols or sorted(store.symbols("ohlcv_daily"))
@@ -1017,32 +1038,57 @@ def validate_sweep(
         )
         raise typer.Exit(code=2)
 
-    bars = store.as_of(as_of).ohlcv_daily(symbols=universe)
-    if bars.height == 0:
-        err_console.print(f"[red]no bars for those instruments at {as_of}[/red]")
-        raise typer.Exit(code=2)
-
-    wide = bars.sort("as_of").pivot(index="as_of", on="symbol", values="adj_close").drop_nulls()
-    prices = {c: wide[c].to_numpy() for c in wide.columns if c != "as_of"}
-    if len(prices) < 2:
-        err_console.print(
-            f"[red]only {len(prices)} instrument(s) have a complete history[/red] -- "
-            "the rest were dropped for gaps"
-        )
-        raise typer.Exit(code=2)
+    axes: dict[str, list[object]] = {}
+    for spec in param or []:
+        if "=" not in spec:
+            err_console.print(f"[red]--param must look like name=v1,v2[/red], got {spec!r}")
+            raise typer.Exit(code=2)
+        name, _, values = spec.partition("=")
+        axes[name.strip()] = [_coerce(v.strip()) for v in values.split(",") if v.strip()]
 
     try:
-        result = sweep_returns(
-            cell_returns_from_prices(prices, lookback=lookback, cost_bps_per_turn=cost_bps),
-            signal=f"trend({lookback})",
-            dimension="instrument",
-        )
-    except ValueError as exc:
+        if signal is not None:
+            grid = parameter_grid(**axes) if axes else [{}]
+            console.print(
+                f"[dim]sweeping {signal} over {len(grid)} parameter set(s) "
+                f"on {len(universe)} instruments -- {len(grid)} trials[/dim]\n"
+            )
+            result = sweep_signal_parameters(
+                signal,
+                grid,
+                store=store,
+                symbols=universe,
+                as_of=as_of,
+                cost_bps_per_turn=cost_bps,
+            )
+        else:
+            if axes:
+                err_console.print(
+                    "[red]--param needs --signal[/red]: the built-in trend rule takes "
+                    "only --lookback. Name a registered signal to sweep its parameters."
+                )
+                raise typer.Exit(code=2)
+            bars = store.as_of(as_of).ohlcv_daily(symbols=universe)
+            if bars.height == 0:
+                err_console.print(f"[red]no bars for those instruments at {as_of}[/red]")
+                raise typer.Exit(code=2)
+            wide = (
+                bars.sort("as_of")
+                .pivot(index="as_of", on="symbol", values="adj_close")
+                .drop_nulls()
+            )
+            prices = {c: wide[c].to_numpy() for c in wide.columns if c != "as_of"}
+            result = sweep_returns(
+                cell_returns_from_prices(prices, lookback=lookback, cost_bps_per_turn=cost_bps),
+                signal=f"trend({lookback})",
+                dimension="instrument",
+            )
+    except (KeyError, ValueError) as exc:
         err_console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from None
 
     table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
-    table.add_column("instrument")
+    table.add_column(result.dimension)
     table.add_column("Sharpe", justify="right")
     table.add_column("t", justify="right")
     table.add_column("t after shrinkage", justify="right")
@@ -1072,6 +1118,18 @@ def validate_sweep(
     # exhausted sweep as a success.
     if not result.survivors:
         raise typer.Exit(code=1)
+
+
+def _coerce(text: str) -> object:
+    """Parameter values arrive as strings; a lookback of "252" is an int."""
+    for cast in (int, float):
+        try:
+            return cast(text)
+        except ValueError:
+            continue
+    if text.lower() in {"true", "false"}:
+        return text.lower() == "true"
+    return text
 
 
 @validate_app.command("anomalies")

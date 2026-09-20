@@ -194,3 +194,58 @@ def test_the_result_renders_as_a_table() -> None:
     assert frame.height == result.trials
     assert isinstance(result, SweepResult)
     assert "Var(t)" in result.describe()
+
+
+# ------------------------------------------------------------ parameter grids --
+def test_the_grid_is_the_trial_count() -> None:
+    """Six parameter sets is six trials, not one, however much the write-up
+    afterwards says 'we used a 252-day lookback'."""
+    from quantlab.validation.sweep import parameter_grid
+
+    grid = parameter_grid(lookback=[63, 126, 252], skip=[0, 21])
+    assert len(grid) == 6
+    assert {"lookback": 252, "skip": 21} in grid
+
+
+def test_an_empty_grid_is_a_single_default_cell() -> None:
+    from quantlab.validation.sweep import parameter_grid
+
+    assert parameter_grid() == [{}]
+
+
+def test_cells_are_labelled_stably() -> None:
+    from quantlab.validation.sweep import describe_cell
+
+    assert describe_cell({"b": 2, "a": 1}) == "a=1 b=2", "sorted, so runs compare"
+    assert describe_cell({}) == "default"
+
+
+# ------------------------------------------------------ dependence vs no edge --
+def test_near_identical_cells_are_not_reported_as_a_failed_test() -> None:
+    """The subtlety that makes the whole correction easy to misread.
+
+    The null assumes cells are INDEPENDENT -- under it Var(t) is 1. Correlated
+    cells move together and drive it toward 0. So a very low variance does not
+    mean 'tested many ways and failed'; it means the cells were nearly the same
+    experiment. A seven-value parameter sweep on real data came out at 0.01.
+    """
+    base = noise(seed=1)
+    # Seven cells that are the same series with a whisker of difference.
+    cells = {
+        f"p{i}": base + np.random.default_rng(100 + i).normal(0, 1e-6, len(base)) for i in range(7)
+    }
+    result = sweep_returns(cells, signal="x", dimension="parameter set")
+
+    assert result.adjustment.variance < 0.5
+    verdict = result.verdict()
+    assert "INDEPENDENT" in verdict
+    assert "no independent information" in verdict
+
+
+def test_genuinely_independent_cells_get_the_plain_verdict() -> None:
+    """The caveat must not fire on every sweep, or it becomes noise."""
+    cells = {f"N{i}": noise(seed=500 + i) for i in range(14)}
+    result = sweep_returns(cells, signal="x")
+
+    if result.adjustment.variance >= 0.5:
+        assert "INDEPENDENT" not in result.verdict()
