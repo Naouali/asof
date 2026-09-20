@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 #
-# Shared Python + scientific stack. Every service image builds FROM this.
+# Shared Python stack. Every service image builds FROM this.
 #
-# Multi-architecture by construction (spec section 10): no architecture-specific
+# Multi-architecture by construction: no architecture-specific
 # binaries are downloaded, and every dependency is installed from wheels that
 # exist for both linux/amd64 and linux/arm64. If a dependency is ever added that
 # has no arm64 wheel, the build fails here rather than silently falling back to a
@@ -27,7 +27,7 @@ WORKDIR /app
 
 # Dependencies first, in their own layer: editing source must not re-resolve them.
 # `--frozen` refuses to update uv.lock, so a build can never silently drift from
-# the committed, pinned resolution (spec section 1: reproducible).
+# the committed, pinned resolution.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
@@ -54,7 +54,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
-    PYTHONHASHSEED=0 \
     QUANTLAB_ENV=ci \
     QUANTLAB_DATA_ROOT=/tmp/quantlab-data \
     QUANTLAB_REPO_ROOT=/app \
@@ -84,10 +83,6 @@ RUN set -eux; \
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    # Determinism (spec section 1): unseeded hash randomisation makes set and dict
-    # iteration order vary between runs, which is enough to change floating-point
-    # reduction order and break byte-identical results.
-    PYTHONHASHSEED=0 \
     QUANTLAB_ENV=docker \
     QUANTLAB_DATA_ROOT=/data \
     QUANTLAB_REPO_ROOT=/app \

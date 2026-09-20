@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FinancialDisclosure>
+  <Member>
+    <Prefix>Hon.</Prefix>
+    <Last>Peters</Last>
+    <First>Scott H.</First>
+    <Suffix />
+    <FilingType>P</FilingType>
+    <StateDst>CA50</StateDst>
+    <Year>2026</Year>
+    <FilingDate>4/29/2026</FilingDate>
+    <DocID>20034342</DocID>
+  </Member>
+  <Member>
+    <Prefix>Hon.</Prefix>
+    <Last>Smucker</Last>
+    <First>Lloyd K.</First>
+    <Suffix />
+    <FilingType>P</FilingType>
+    <StateDst>PA11</StateDst>
+    <Year>2026</Year>
+    <FilingDate>4/30/2026</FilingDate>
+    <DocID>20019182</DocID>
+  </Member>
+  <Member>
+    <Prefix>Hon.</Prefix>
+    <Last>Khanna</Last>
+    <First>Rohit</First>
+    <Suffix />
+    <FilingType>P</FilingType>
+    <StateDst>CA17</StateDst>
+    <Year>2026</Year>
+    <FilingDate>2/6/2026</FilingDate>
+    <DocID>8221322</DocID>
+  </Member>
+  <Member>
+    <Prefix />
+    <Last>Abdulle</Last>
+    <First>Abdisallam</First>
+    <Suffix />
+    <FilingType>C</FilingType>
+    <StateDst>MN02</StateDst>
+    <Year>2026</Year>
+    <FilingDate>6/11/2026</FilingDate>
+    <DocID>10078673</DocID>
+  </Member>
+  <Member>
+    <Prefix />
+    <Last>Arias</Last>
+    <First>Vincent Michael</First>
+    <Suffix />
+    <FilingType>A</FilingType>
+    <StateDst>FL27</StateDst>
+    <Year>2026</Year>
+    <FilingDate>5/25/2026</FilingDate>
+    <DocID>10079846</DocID>
+  </Member>
+  <Member>
+    <Prefix>Ms.</Prefix>
+    <Last>Arnold</Last>
+    <First>Marie Encar Arana</First>
+    <Suffix />
+    <FilingType>W</FilingType>
+    <StateDst />
+    <Year>2026</Year>
+    <FilingDate />
+    <DocID>9116303</DocID>
+  </Member>
+</FinancialDisclosure>

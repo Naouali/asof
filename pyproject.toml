@@ -1,7 +1,7 @@
 [project]
 name = "quantlab"
 version = "0.1.0"
-description = "Multi-asset quantitative research and backtesting platform built on free data sources."
+description = "Multi-asset market data ETL: fetches free data sources into a point-in-time parquet lake."
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = { text = "Proprietary" }
@@ -19,9 +19,6 @@ dependencies = [
   "polars>=1.17,<2.0",
   "pyarrow>=18.1,<21.0",
   "duckdb>=1.1.3,<2.0",
-  # --- numerics ---------------------------------------------------------------------
-  "numpy>=2.1,<3.0",
-  "scipy>=1.14,<2.0",
   # --- config / cli / logging -------------------------------------------------------
   "typer>=0.15,<0.17",
   "rich>=13.9,<15.0",
@@ -31,34 +28,18 @@ dependencies = [
   "structlog>=24.4,<26.0",
   # --- http / ingest ----------------------------------------------------------------
   "httpx>=0.28,<0.29",
-  "tenacity>=9.0,<10.0",
+  # --- parsing disclosure filings -----------------------------------------------------
+  # SEC ownership and 13F filings are XML fetched from the network, so they go through
+  # defusedxml rather than the stdlib parser. House disclosures exist only as PDF.
+  "defusedxml>=0.7.1,<0.8",
+  "pypdf>=5.1,<7.0",
   # --- calendars --------------------------------------------------------------------
   "exchange-calendars>=4.8,<5.0",
-  # --- paper-trading state / run registry (Postgres only; never bulk market data) ----
-  "sqlalchemy>=2.0.36,<3.0",
-  "psycopg[binary]>=3.2.3,<4.0",
-  "alembic>=1.14,<2.0",
   # --- scheduling -------------------------------------------------------------------
   "apscheduler>=3.11,<4.0",
-  # --- dashboard --------------------------------------------------------------------
+  # --- the web app: a read-only API over the lake, which also serves the built UI ----
   "fastapi>=0.115,<1.0",
   "uvicorn[standard]>=0.34,<1.0",
-  "jinja2>=3.1.4,<4.0",
-]
-
-[project.optional-dependencies]
-research = [
-  "jupyterlab>=4.3,<5.0",
-  "ipywidgets>=8.1.5,<9.0",
-  "matplotlib>=3.9,<4.0",
-  "plotly>=5.24,<7.0",
-  "statsmodels>=0.14.4,<1.0",
-  "scikit-learn>=1.6,<2.0",
-  # pandas is present ONLY for interop with libraries that demand it (statsmodels,
-  # Ken French CSV parsing). It is banned from the signal path -- see spec section 13
-  # and the ruff TID251 rule below, which makes `import pandas` an error inside
-  # src/quantlab/signals/ and src/quantlab/backtest/.
-  "pandas>=2.2.3,<3.0",
 ]
 
 # `dev` is a PEP 735 dependency group, not an extra: uv installs it by default and
@@ -69,11 +50,10 @@ dev = [
   "pytest>=8.3.4,<9.0",
   "pytest-cov>=6.0,<8.0",
   "pytest-timeout>=2.3,<3.0",
-  "hypothesis>=6.122,<7.0",
   "ruff>=0.8.4,<0.15",
   "mypy>=1.14,<2.0",
   "types-pyyaml>=6.0.12,<7.0",
-  "scipy-stubs>=1.14,<2.0",
+  "types-defusedxml>=0.7.0,<0.8",
 ]
 
 [project.scripts]
@@ -113,19 +93,16 @@ ignore = [
   "B008",   # typer uses function calls in argument defaults by design
 ]
 
-# Greek letters are the notation the impact, optimisation and validation
-# literature uses. Spelling sigma out would make the formulas harder to check
-# against the papers they come from, which is the only way anyone can audit them.
-allowed-confusables = ["σ", "δ", "κ", "γ", "η", "ε", "λ", "τ", "α", "β", "μ", "ρ", "Σ", "·", "−", "×", "≈", "≤", "≥"]
+allowed-confusables = ["·", "−", "×", "≈", "≤", "≥"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S603", "S607", "S608"]  # asserts, subprocesses and deliberately-malicious SQL are the point
 "scripts/**" = ["S603"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-# Spec section 13: "Do not use pandas indexed joins in the signal path where a
-# time-misalignment bug could hide." Enforced mechanically rather than by convention.
-"pandas".msg = "pandas is banned in the signal/backtest path -- use polars (see docs/ASSUMPTIONS.md)."
+# An implicit index is where time-misalignment bugs hide. Enforced mechanically
+# rather than by convention.
+"pandas".msg = "pandas is banned in this repository -- use polars."
 
 [tool.ruff.format]
 quote-style = "double"
@@ -150,10 +127,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-# Slow tests are excluded by default. The throughput benchmark measures wall
-# clock, and running it alongside six hundred other tests measures the machine's
-# memory pressure rather than the engine. Run it deliberately with `make bench`,
-# which is also what CI does, in its own job.
+# Slow tests (the Docker stack integration tests) are excluded by default.
 addopts = "-ra --strict-markers --strict-config -m 'not slow'"
 timeout = 300
 markers = [
@@ -170,8 +144,4 @@ branch = true
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "raise NotImplementedError", "if TYPE_CHECKING:"]
 
-# Spec section 11: >85% on costs, validation, backtest and data/pit is
-# non-negotiable. data/pit exists as of Milestone 2 and the data layer as a whole
-# sits at 91%; the floor rises again as costs (M3), backtest (M4) and validation
-# (M5) land.
 fail_under = 85

@@ -12,8 +12,8 @@ Tuesday of that week... It takes three days to process the data."* Nothing in an
 CFTC payload carries that release date -- the Socrata API returns
 ``report_date_as_yyyy_mm_dd`` and no publication field at all -- so ``known_at``
 has to be derived, and deriving it wrongly is the single most common look-ahead
-bias in published COT research. A signal that reads Tuesday's positioning on
-Tuesday is reading a number that did not exist for another three days.
+error in published work on this report. Anything that reads Tuesday's positioning
+on Tuesday is reading a number that did not exist for another three days.
 
 **Three reporting regimes, not one.** Checking 1,933 reports for the CME
 Eurodollar contract back to 1986:
@@ -88,8 +88,8 @@ def cot_release(report_date: dt.date) -> dt.datetime:
     Tuesday's snapshot plus three days lands on Friday. If that Friday is a
     federal holiday the release rolls **forward** to the next working day, never
     backward: assuming an earlier release is the error that manufactures
-    look-ahead, so the uncertainty is spent in the direction that costs a signal
-    performance rather than inventing it.
+    look-ahead, so the uncertainty is spent in the direction that makes the data
+    look later, never earlier, than it was.
 
     Raises :class:`PreWeeklyEraError` for reports before weekly publication began,
     because that data has no honest release date to give.
@@ -102,7 +102,7 @@ def cot_release(report_date: dt.date) -> dt.datetime:
             "this era was not published at the time and was compiled later, so no "
             "known_at can be assigned to it honestly. Pass "
             "allow_pre_weekly_era=True to ingest it anyway; it will be dated with "
-            "a deliberately punitive lag and must not be used in a signal.",
+            "a deliberately punitive lag and must not be read as point-in-time.",
         )
 
     scheduled = report_date + dt.timedelta(days=PROCESSING_DAYS)
@@ -333,7 +333,7 @@ class CftcPositioning(Source):
 
         if empty_contracts:
             # Socrata answers an unknown contract code with an empty array, not an
-            # error, so a typo ingests silently as nothing. Spec section 13: fail
+            # error, so a typo ingests silently as nothing. Fail
             # loudly rather than quietly return less than was asked for.
             log.warning(
                 "cftc.contracts_returned_nothing",

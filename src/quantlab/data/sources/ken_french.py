@@ -1,12 +1,8 @@
 """Kenneth R. French Data Library.
 
-The accepted benchmark for equity factor research: survivorship-bias-free,
+The accepted reference series for equity factors: survivorship-bias-free,
 decades of history, free, and built on CRSP/Compustat data nobody else gets for
-nothing. Spec section 3.3 is direct about the use: *"If your hand-built momentum
-factor doesn't correlate >0.9 with Ken French's UMD, your construction has a bug."*
-
-Pulled forward from Milestone 9 because Milestone 6's acceptance criterion is that
-benchmark, and a benchmark you cannot run is not one.
+nothing.
 
 **On the restatement.** The whole history is rebuilt on each release, so these
 files answer *"what do we now believe UMD returned in 1965"* rather than *"what was
@@ -51,8 +47,8 @@ KEN_FRENCH_FILES: dict[str, dict[str, str]] = {
 }
 
 #: Files are refreshed monthly, so a daily observation is not published until the
-#: following release. Charged conservatively; these are a benchmark, not a signal,
-#: but a lag that is too short is the kind of error that silently becomes one.
+#: following release. Charged conservatively: a lag that is too short is the kind
+#: of error nothing ever reports.
 PUBLICATION_LAG_DAYS = 60
 
 

@@ -5,8 +5,8 @@ the **session close instant in UTC** for every daily bar. A daily bar's informat
 does not exist until the session closes, and the close of a US session is 21:00 UTC
 in winter and 20:00 UTC in summer. Storing a bare date instead throws that away and
 makes cross-venue alignment silently wrong -- a Tokyo close and a New York close on
-the "same date" are fourteen hours apart, and a signal that treats them as
-simultaneous is using tomorrow's Tokyo data to trade today's New York open.
+the "same date" are fourteen hours apart, and anything that treats them as
+simultaneous is reading tomorrow's Tokyo close on today's New York open.
 
 Venue codes are ISO MICs where one exists (`XNYS`, `XLON`), plus `24/7` for crypto.
 """
@@ -46,8 +46,8 @@ class UnknownVenueError(KeyError):
 
     Raised rather than defaulting to a US calendar. Guessing a venue's hours is a
     silent, systematic time-misalignment error across every bar of that instrument,
-    and it would never surface as an exception -- only as a slightly-too-good
-    backtest.
+    and it would never surface as an exception -- only as numbers that are
+    slightly, persistently wrong.
     """
 
 

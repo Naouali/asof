@@ -1,9 +1,8 @@
 """Binance spot klines, perpetual funding history, and instrument reference data.
 
 Crypto is the best free data of any asset class: complete funding history, open
-interest, and order books, all without a key. It is where the microstructure and
-carry machinery can be built and validated honestly, and then applied with
-appropriate humility to asset classes whose free data is worse.
+interest, and order books, all without a key. It is the cleanest free market
+data there is, and a fair yardstick for how much worse the rest is.
 
 Two things this module exists to get right:
 
@@ -16,7 +15,7 @@ day of universe history that cannot be recovered.
 
 **Funding regimes.** The funding formula, cap and interval have all changed over
 time and differ per contract. ``interval_hours`` is derived from the observed
-spacing of payments rather than assumed to be eight, so a carry backtest spanning
+spacing of payments rather than assumed to be eight, so a series spanning
 a regime change can at least detect that it is comparing different instruments.
 """
 
@@ -232,8 +231,8 @@ class BinanceFunding(_Binance):
 def _with_interval_hours(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Attach the observed funding interval to each payment.
 
-    The interval of a payment is the gap since the previous one, which is what a
-    carry calculation needs to annualise correctly. The first payment of a series
+    The interval of a payment is the gap since the previous one, which is what
+    annualising a funding rate needs. The first payment of a series
     has no predecessor, so it inherits the next gap.
     """
     if not rows:

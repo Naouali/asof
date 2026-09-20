@@ -5,11 +5,11 @@ This registry is the single source of truth for three things:
 1. **Availability.** ``quantlab doctor`` reads it to report which sources work
    right now, given the API keys actually present. The stack must run with none
    (spec section 10), so keyless sources are marked as such.
-2. **Caveats.** Spec section 1 forbids pretending free data is clean. Every known
-   bias is recorded here as structured data, and every tearsheet renders the
-   caveats of the sources that fed it into a data-quality warnings panel
-   (spec section 9). A caveat that only exists in a docstring does not reach the
-   person reading the equity curve, so it goes here.
+2. **Caveats.** Free data is never clean, and this does not pretend otherwise.
+   Every known bias is recorded here as structured data, reported by
+   ``quantlab data catalogue`` and rendered into ``docs/DATA_CATALOGUE.md``. A
+   caveat that only exists in a docstring does not reach the person consuming
+   the data, so it goes here.
 3. **Point-in-time honesty.** ``pit_quality`` states whether a source can answer
    "what was known on date D". Sources marked :data:`PitQuality.RESTATED` are
    forbidden from the signal path without an explicit override, because they
@@ -100,8 +100,12 @@ class SourceSpec:
         return self.key_setting is not None
 
     @property
-    def usable_in_signal_path(self) -> bool:
-        """Whether data from this source may feed a signal without an override."""
+    def point_in_time_safe(self) -> bool:
+        """Whether history read from this source is what was known at the time.
+
+        False for a restated source: it serves today's values for past dates, so
+        anything computed on its history quietly knows the future.
+        """
         return self.pit_quality is not PitQuality.RESTATED
 
 
@@ -781,8 +785,183 @@ _OPTIONS: tuple[SourceSpec, ...] = (
     ),
 )
 
+# ======================================================================================
+# 3.8 Disclosed trades -- insiders, institutions and politicians
+# ======================================================================================
+# What these have in common is that nobody here observes a trade. Each is a legal
+# DISCLOSURE, filed days to months after the fact, and the whole value of the data
+# is in keeping the trade date and the disclosure date apart.
+_DISCLOSURES: tuple[SourceSpec, ...] = (
+    SourceSpec(
+        key="sec_insider",
+        name="SEC EDGAR ownership filings (Forms 4 and 5)",
+        url="https://www.sec.gov/search-filings/edgar-application-programming-interfaces",
+        asset_classes=(AssetClass.EQUITY,),
+        datasets=("insider_transactions",),
+        # The submissions API carries the instant EDGAR accepted each filing, to the
+        # second, so nothing here has to be derived.
+        pit_quality=PitQuality.VINTAGE,
+        update_frequency="continuous; a Form 4 is due two business days after the trade",
+        licence="US Government public domain",
+        reliability="stable",
+        key_setting=None,
+        rate_limit="10 requests/second, descriptive User-Agent with contact REQUIRED",
+        max_requests_per_second=8.0,
+        caveats=(
+            "MOST INSIDER TRANSACTIONS ARE NOT A VIEW ON THE STOCK. Grants (A), option "
+            "exercises (M), shares withheld for tax (F) and gifts (G) dominate the "
+            "filings of a large company. Only open-market purchases (P) and sales (S) "
+            "are discretionary, and a sale under a 10b5-1 plan was scheduled months "
+            "earlier. Filter on `transaction_code` before reading anything into it.",
+            "One request per filing. A large issuer has hundreds of Form 4s a year, so "
+            "a wide universe over a long window is tens of thousands of requests at "
+            "the SEC's pace. Keep the symbol list deliberate.",
+            "Amendments do not replace what they amend. A 4/A is a new filing with a "
+            "new accession number, and the rows it corrects stay in the lake beside "
+            "it; nothing links the two except the owner, the issuer and the dates.",
+            "Coverage follows the SEC's current ticker map, so a delisted or acquired "
+            "issuer cannot be requested by ticker even though its filings still exist. "
+            "This is survivorship bias in what can be ASKED FOR, not in what is stored.",
+            "Filings before mid-2003 are not XML and are skipped. Prices are sometimes "
+            "given only in a footnote, and are then null rather than guessed.",
+        ),
+    ),
+    SourceSpec(
+        key="sec_13f",
+        name="SEC EDGAR institutional holdings (Form 13F)",
+        url="https://www.sec.gov/divisions/investment/13ffaq",
+        asset_classes=(AssetClass.EQUITY,),
+        datasets=("institutional_holdings",),
+        pit_quality=PitQuality.VINTAGE,
+        update_frequency="quarterly, due 45 days after quarter end",
+        licence="US Government public domain",
+        reliability="stable",
+        key_setting=None,
+        rate_limit="10 requests/second, descriptive User-Agent with contact REQUIRED",
+        max_requests_per_second=8.0,
+        caveats=(
+            "STALE BY CONSTRUCTION. Positions are counted at quarter end and disclosed "
+            "up to 45 days later, so on the day a filing becomes knowable it describes "
+            "a portfolio six weeks old, and by the next one it is nineteen weeks old. "
+            "A fast-trading manager's 13F says almost nothing about what it holds now.",
+            "LONG POSITIONS ONLY. Short positions, cash, most derivatives, and anything "
+            "not on the SEC's list of 13(f) securities are absent. A long-short fund "
+            "looks like a long-only one, and a put is reported by the value of the "
+            "UNDERLYING shares, not by what the option cost.",
+            "Securities are identified by CUSIP and by nothing else. There is no ticker "
+            "on a 13F and no free CUSIP master; `fails_to_deliver` is the only free "
+            "bridge, and it covers only securities that have had a settlement fail.",
+            "THE UNIT OF `value` CHANGED. Filings made before 3 January 2023 report "
+            "thousands of dollars and later ones report dollars, in the same field, "
+            "with nothing in the payload saying which. It is normalised here by filing "
+            "date; any other copy of this data must be checked for the same thing.",
+            "A restating amendment supersedes matching positions but cannot delete one: "
+            "a holding dropped by a 13F-HR/A stays visible from the original filing. "
+            "Managers may also omit positions under confidential treatment and disclose "
+            "them up to a year later, so an early snapshot of a quarter is incomplete.",
+            "Filings before mid-2013 carry the holdings as free text, not XML, and are "
+            "skipped rather than parsed by guesswork.",
+        ),
+    ),
+    SourceSpec(
+        key="sec_ftd",
+        name="SEC fails-to-deliver data",
+        url="https://www.sec.gov/data-research/sec-markets-data/fails-deliver-data",
+        asset_classes=(AssetClass.EQUITY, AssetClass.REFERENCE),
+        datasets=("fails_to_deliver",),
+        pit_quality=PitQuality.AS_PUBLISHED,
+        update_frequency="twice monthly, two to six weeks after the settlement dates covered",
+        licence="US Government public domain",
+        reliability="stable",
+        key_setting=None,
+        rate_limit="10 requests/second, descriptive User-Agent with contact REQUIRED",
+        max_requests_per_second=4.0,
+        caveats=(
+            "`quantity` is a BALANCE, not a flow: the total fails outstanding in that "
+            "security on that day, including ones carried over. Summing it across days "
+            "counts the same undelivered shares again for every day they stay open.",
+            "A fail is not evidence of naked short selling. The SEC says so on the page "
+            "the data comes from: fails arise from long sales, processing delays and "
+            "market-maker activity too, and the file cannot tell them apart.",
+            "A security appears only on days it has a balance, so absence means no "
+            "fails, not missing data -- and it means the CUSIP-to-ticker bridge built "
+            "from this file never sees a security that always settles cleanly.",
+            "`known_at` is the file's Last-Modified time. If the SEC ever re-uploads an "
+            "old file, that history becomes knowable later than it really was, which "
+            "errs in the safe direction but does err.",
+        ),
+    ),
+    SourceSpec(
+        key="house_clerk",
+        name="US House of Representatives financial disclosures (Office of the Clerk)",
+        url="https://disclosures-clerk.house.gov/FinancialDisclosure",
+        asset_classes=(AssetClass.EQUITY, AssetClass.REFERENCE),
+        datasets=("congress_filings", "congress_trades"),
+        pit_quality=PitQuality.VINTAGE,
+        update_frequency="continuous; a report is due within 45 days of the trade",
+        licence="Public record. 5 U.S.C. 13107 prohibits use for commercial "
+        "solicitation or to establish a credit rating",
+        reliability="scraped",
+        key_setting=None,
+        rate_limit="none published -- self-limited",
+        max_requests_per_second=1.0,
+        caveats=(
+            "SCANNED PAPER REPORTS CANNOT BE READ. Roughly one report in eight is a "
+            "scan with no text layer, and some of the most active traders in the House "
+            "file that way. Their trades are ABSENT from `congress_trades`, not zero. "
+            "`congress_filings` lists every report, so the gap can be measured.",
+            "THE HOUSE ONLY. The Senate's disclosure site refuses automated clients and "
+            "sits behind a click-through agreement; it is catalogued as `senate_efd` "
+            "and deliberately not fetched. Half of Congress is therefore missing.",
+            "Sizes are brackets, not amounts: $1,001-$15,000 up to over $50,000,000. "
+            "The top of a bracket can be fifteen times the bottom, so any aggregate "
+            "dollar figure built from this is an order-of-magnitude estimate.",
+            "The ticker is whatever the member typed. It is missing for bonds, funds "
+            "and private holdings, occasionally wrong, and never validated here.",
+            "Transactions are parsed out of a PDF's text layer by pattern. A report "
+            "whose parsed row count disagrees with the dates found in it is logged, "
+            "but a layout change could still lose rows quietly within one report.",
+            "The Clerk publishes a filing DATE with no time and no publication "
+            "timestamp, so `known_at` is taken as the end of that day in Washington.",
+        ),
+    ),
+    SourceSpec(
+        key="senate_efd",
+        name="US Senate electronic financial disclosures (eFD)",
+        url="https://efdsearch.senate.gov/search/",
+        asset_classes=(AssetClass.EQUITY, AssetClass.REFERENCE),
+        datasets=("congress_trades",),
+        pit_quality=PitQuality.VINTAGE,
+        update_frequency="continuous",
+        licence="Public record, behind a click-through agreement restricting use",
+        reliability="scraped",
+        key_setting=None,
+        rate_limit="automated clients are refused (HTTP 403 as of 2026-09-20)",
+        max_requests_per_second=0.2,
+        caveats=(
+            "NOT FETCHED, by decision. The site answers automated clients with 403 and "
+            "requires accepting a use agreement before any search. Getting past either "
+            "is a choice for a person to make about terms they have read, not a "
+            "default for a scheduler to make on their behalf.",
+            "The community mirrors that once republished this data are gone or frozen: "
+            "the Senate and House Stock Watcher buckets return 403, and the public "
+            "GitHub copy of the Senate data ends in December 2020.",
+        ),
+        notes=("Catalogued so the gap in congressional coverage is explicit.",),
+    ),
+)
+
 SOURCES: dict[str, SourceSpec] = {
-    spec.key: spec for spec in (*_MACRO, *_EQUITY, *_FACTORS, *_FUTURES, *_CRYPTO, *_OPTIONS)
+    spec.key: spec
+    for spec in (
+        *_MACRO,
+        *_EQUITY,
+        *_FACTORS,
+        *_FUTURES,
+        *_CRYPTO,
+        *_OPTIONS,
+        *_DISCLOSURES,
+    )
 }
 
 

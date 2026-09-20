@@ -19,7 +19,8 @@ The contract sources must honour:
   point-in-time queries return nothing -- that is the data telling you the truth.
 * **Never return an empty frame to signal failure.** Empty means "this window
   genuinely has no observations". Failure raises.
-* **Never fall back to another source.** Spec section 13.
+* **Never fall back to another source.** A substitute is a different dataset
+  under the first one's name.
 """
 
 from __future__ import annotations
@@ -125,7 +126,7 @@ class Source(ABC):
         if self.settings.secret_for(self.spec.key_setting):
             return True, f"QUANTLAB_{self.spec.key_setting.upper()} is set"
         # Name where the key comes from, not just that it is missing. The
-        # platform is required to run with none, so this message is the normal
+        # stack is required to run with none, so this message is the normal
         # experience of a new installation rather than an error condition.
         return False, (
             f"QUANTLAB_{self.spec.key_setting.upper()} is not set. "

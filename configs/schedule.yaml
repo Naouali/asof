@@ -3,8 +3,7 @@
 # silently move a job across a data release.
 #
 # Commands are passed to `python -m quantlab`, so `["data", "ingest"]` runs
-# `quantlab data ingest`. Jobs whose command is not implemented yet are disabled;
-# they are listed so the intended cadence is visible and reviewable now.
+# `quantlab data ingest`.
 
 jobs:
   - name: ingest-daily
@@ -30,6 +29,21 @@ jobs:
     timeout_seconds: 1800
     enabled: true
 
+  - name: ingest-disclosures
+    description: >-
+      Insider, institutional and congressional disclosures. Runs after the US
+      filing day is over everywhere it matters: EDGAR accepts until 22:00 Eastern
+      and a House report is only knowable once its filing day has ended, which is
+      04:00-05:00 UTC. Tuesday to Saturday, so Friday evening's filings are caught.
+    cron: "15 6 * * 2-6"
+    command:
+      ["data", "ingest", "--incremental",
+       "-f", "sec_insider.insider_transactions", "-f", "sec_13f.institutional_holdings",
+       "-f", "sec_ftd.fails_to_deliver",
+       "-f", "house_clerk.congress_filings", "-f", "house_clerk.congress_trades"]
+    timeout_seconds: 5400
+    enabled: true
+
   - name: options-snapshot
     description: >-
       Daily options chain snapshot. There is no free historical options data, so
@@ -40,22 +54,8 @@ jobs:
     timeout_seconds: 1800
     enabled: true
 
-  - name: paper-trading
-    description: >-
-      Compute today's signals, produce target positions, mark to market. Fills
-      are charged the backtest's own cost model -- a paper book filling at mid
-      would beat its own backtest for no reason. Nothing is routed anywhere:
-      spec section 1 puts live execution outside v1.
-    cron: "0 22 * * 1-5"           # 22:00 UTC, after the US close and the ingest
-    command:
-      ["paper", "run", "--signal", "trend.time_series_momentum",
-       "--as-of", "today", "--symbol", "SPY", "--symbol", "QQQ",
-       "--symbol", "IWM", "--symbol", "TLT", "--symbol", "GLD", "--symbol", "EEM"]
-    timeout_seconds: 3600
-    enabled: false                 # enable once you have chosen a strategy to run
-
   - name: doctor
-    description: Environment self-check; the only job enabled before Milestone 2.
+    description: Environment self-check.
     cron: "0 6 * * *"
     command: ["doctor"]
     timeout_seconds: 300

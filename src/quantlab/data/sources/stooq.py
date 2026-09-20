@@ -9,8 +9,8 @@ and posts the solution to ``/__verify`` before any CSV is released.
 QuantLab does not solve that challenge. It is an access control the operator
 deliberately deployed, and defeating it would be both a terms-of-service problem
 and the kind of thing that gets an IP banned mid-ingest. So this fetcher detects
-the interstitial and fails loudly, per spec section 13: do not quietly substitute
-a different data source when one fails.
+the interstitial and fails loudly: a different data source is never quietly
+substituted when one fails.
 
 **Consequence:** Yahoo is the primary free equity price source, and the
 cross-check Stooq was meant to provide -- an independent opinion on Yahoo's

@@ -10,7 +10,7 @@ from quantlab.scheduler import load_schedule
 def test_repo_schedule_parses(repo_root: Path) -> None:
     jobs = load_schedule(repo_root / "configs" / "schedule.yaml")
     assert jobs
-    assert {"ingest-daily", "paper-trading", "doctor"} <= {j.name for j in jobs}
+    assert {"ingest-daily", "ingest-crypto", "doctor"} <= {j.name for j in jobs}
 
 
 def test_every_scheduled_command_is_a_real_cli_command(repo_root: Path) -> None:
@@ -31,9 +31,14 @@ def test_only_implemented_jobs_are_enabled(repo_root: Path) -> None:
     the operator to ignore scheduler failures."""
     jobs = load_schedule(repo_root / "configs" / "schedule.yaml")
     enabled = {j.name for j in jobs if j.enabled}
-    assert enabled == {"doctor", "ingest-daily", "ingest-crypto", "options-snapshot"}
-    # Paper trading lands in Milestone 11.
-    assert {j.name for j in jobs if not j.enabled} == {"paper-trading"}
+    assert enabled == {
+        "doctor",
+        "ingest-daily",
+        "ingest-crypto",
+        "ingest-disclosures",
+        "options-snapshot",
+    }
+    assert not [j.name for j in jobs if not j.enabled]
 
 
 def test_the_options_collector_is_enabled_because_it_cannot_be_backfilled(
@@ -101,10 +106,10 @@ def test_job_execution_runs_the_cli_and_records_the_result(tmp_path: Path) -> No
     assert heartbeat.status().detail == {"last_job": "ok", "last_result": 0}
 
     # A failing job is recorded, not swallowed, and the scheduler survives it.
-    # `backtest` exits 2 immediately (Milestone 4), which makes it a fast, offline
+    # An ingest with no plan exits 2 immediately, which makes it a fast, offline
     # stand-in for any job that fails.
     failing = ScheduledJob(
-        name="failing", cron="0 6 * * *", command=["backtest", "--config", "nope.yaml"]
+        name="failing", cron="0 6 * * *", command=["data", "ingest", "--config", "nope.yaml"]
     )
     _run_job(failing, heartbeat)
     assert heartbeat.status().detail == {"last_job": "failing", "last_result": 2}

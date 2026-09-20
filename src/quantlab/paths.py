@@ -22,27 +22,8 @@ class Layout:
     # -- the data lake ----------------------------------------------------------
     @property
     def lake(self) -> Path:
-        """Parquet lake root. Partitioned source/dataset/asset_class/year (spec 3.8)."""
+        """Parquet lake root. Partitioned source/dataset/asset_class/year."""
         return self.data_root / "lake"
-
-    @property
-    def raw(self) -> Path:
-        """Untouched payloads exactly as received, kept for audit and re-parsing."""
-        return self.data_root / "raw"
-
-    @property
-    def snapshots(self) -> Path:
-        """Immutable data snapshots. A snapshot id + a git commit pins a backtest."""
-        return self.data_root / "snapshots"
-
-    @property
-    def runs(self) -> Path:
-        """Backtest run artefacts: configs, results, tearsheets."""
-        return self.data_root / "runs"
-
-    @property
-    def cache(self) -> Path:
-        return self.data_root / "cache"
 
     @property
     def state(self) -> Path:
@@ -55,7 +36,7 @@ class Layout:
         return self.repo_root / "configs"
 
     def all_data_dirs(self) -> tuple[Path, ...]:
-        return (self.lake, self.raw, self.snapshots, self.runs, self.cache, self.state)
+        return (self.lake, self.state)
 
     def ensure(self) -> None:
         """Create every data directory. Safe to call repeatedly."""

@@ -4,13 +4,12 @@
 
 # Data catalogue
 
-Every external source this platform can read, what it provides, and how it lies to
+Every external source this ETL can read, what it provides, and how it lies to
 you. Free data is never clean; the purpose of this document is to make the ways in
 which it is dirty impossible to overlook.
 
-The same information is structured data in `src/quantlab/data/catalogue.py`, is
-reported by `quantlab data catalogue`, is served at `/api/sources`, and is rendered
-into the data-quality warnings panel of every tearsheet.
+The same information is structured data in `src/quantlab/data/catalogue.py` and is
+reported by `quantlab data catalogue`.
 
 ## How to read the point-in-time column
 
@@ -24,11 +23,8 @@ into the data-quality warnings panel of every tearsheet.
 ## The three biases that matter most here
 
 1. **Survivorship bias in equities.** It cannot be fully solved without paid CRSP.
-   What the platform does instead: builds universes from historical index
-   constituent and SEC filer lists rather than from tickers that exist today,
-   retains every delisted ticker once observed, prefers the academic factor
-   datasets where the bias would dominate, and flags residual bias on every equity
-   tearsheet.
+   What the lake does instead: retains every delisted ticker once observed, and
+   marks each affected source `survivorship_biased` so a consumer cannot miss it.
 2. **Restated macro data.** FRED serves the latest vintage of every series. Any
    macro signal must read ALFRED vintages instead.
 3. **No free historical options data.** The options snapshot collector accumulates
@@ -54,6 +50,7 @@ into the data-quality warnings panel of every tearsheet.
 | [`fmp`](#fmp) | equity | `restated` | `fmp_api_key` | 1 |
 | [`frankfurter`](#frankfurter) | fx | `as_published` | none | 3 |
 | [`fred`](#fred) | macro, rates, credit | `restated` | `fred_api_key` | 3 |
+| [`house_clerk`](#house-clerk) | equity, reference | `vintage` | none | 6 |
 | [`jkp_factors`](#jkp-factors) | factors, equity | `restated` | none | 2 |
 | [`ken_french`](#ken-french) | factors, equity | `restated` | none | 2 |
 | [`kraken`](#kraken) | crypto | `as_published` | none | 2 |
@@ -62,7 +59,11 @@ into the data-quality warnings panel of every tearsheet.
 | [`open_asset_pricing`](#open-asset-pricing) | factors, equity | `restated` | none | 2 |
 | [`open_bond_asset_pricing`](#open-bond-asset-pricing) | credit, factors | `restated` | none | 2 |
 | [`options_snapshot`](#options-snapshot) | options | `as_published` | none | 3 |
+| [`sec_13f`](#sec-13f) | equity | `vintage` | none | 6 |
 | [`sec_edgar`](#sec-edgar) | equity, reference | `vintage` | none | 5 |
+| [`sec_ftd`](#sec-ftd) | equity, reference | `as_published` | none | 4 |
+| [`sec_insider`](#sec-insider) | equity | `vintage` | none | 5 |
+| [`senate_efd`](#senate-efd) | equity, reference | `vintage` | none | 2 |
 | [`stooq`](#stooq) | equity, futures, fx | `survivorship_biased` | none | 4 |
 | [`tiingo`](#tiingo) | equity, crypto | `restated` | `tiingo_api_key` | 1 |
 | [`treasury_fiscaldata`](#treasury-fiscaldata) | rates, macro | `as_published` | none | 2 |
@@ -216,6 +217,31 @@ into the data-quality warnings panel of every tearsheet.
 
 - Free-tier fundamentals are restated with no as-filed date: unusable for point-in-time work. The delisted-companies endpoint is nonetheless useful for partially repairing survivorship bias in the universe.
 
+### house_clerk
+
+**US House of Representatives financial disclosures (Office of the Clerk)** — <https://disclosures-clerk.house.gov/FinancialDisclosure>
+
+| Field | Value |
+| --- | --- |
+| Datasets | `congress_filings`, `congress_trades` |
+| Asset classes | equity, reference |
+| Point-in-time | `vintage` |
+| Update frequency | continuous; a report is due within 45 days of the trade |
+| Reliability | scraped |
+| Rate limit | none published -- self-limited |
+| Ingest throttle | 1.0 req/s |
+| Licence | Public record. 5 U.S.C. 13107 prohibits use for commercial solicitation or to establish a credit rating |
+| API key | not required |
+
+**Caveats**
+
+- SCANNED PAPER REPORTS CANNOT BE READ. Roughly one report in eight is a scan with no text layer, and some of the most active traders in the House file that way. Their trades are ABSENT from `congress_trades`, not zero. `congress_filings` lists every report, so the gap can be measured.
+- THE HOUSE ONLY. The Senate's disclosure site refuses automated clients and sits behind a click-through agreement; it is catalogued as `senate_efd` and deliberately not fetched. Half of Congress is therefore missing.
+- Sizes are brackets, not amounts: $1,001-$15,000 up to over $50,000,000. The top of a bracket can be fifteen times the bottom, so any aggregate dollar figure built from this is an order-of-magnitude estimate.
+- The ticker is whatever the member typed. It is missing for bonds, funds and private holdings, occasionally wrong, and never validated here.
+- Transactions are parsed out of a PDF's text layer by pattern. A report whose parsed row count disagrees with the dates found in it is logged, but a layout change could still lose rows quietly within one report.
+- The Clerk publishes a filing DATE with no time and no publication timestamp, so `known_at` is taken as the end of that day in Washington.
+
 ### nasdaq_data_link
 
 **Nasdaq Data Link (free tables only)** — <https://data.nasdaq.com/>
@@ -239,6 +265,31 @@ into the data-quality warnings panel of every tearsheet.
 **Caveats**
 
 - The free catalogue shrinks over time; tables that worked last year may now be paid. Ingest must fail loudly on a 403 rather than skipping the table.
+
+### sec_13f
+
+**SEC EDGAR institutional holdings (Form 13F)** — <https://www.sec.gov/divisions/investment/13ffaq>
+
+| Field | Value |
+| --- | --- |
+| Datasets | `institutional_holdings` |
+| Asset classes | equity |
+| Point-in-time | `vintage` |
+| Update frequency | quarterly, due 45 days after quarter end |
+| Reliability | stable |
+| Rate limit | 10 requests/second, descriptive User-Agent with contact REQUIRED |
+| Ingest throttle | 8.0 req/s |
+| Licence | US Government public domain |
+| API key | not required |
+
+**Caveats**
+
+- STALE BY CONSTRUCTION. Positions are counted at quarter end and disclosed up to 45 days later, so on the day a filing becomes knowable it describes a portfolio six weeks old, and by the next one it is nineteen weeks old. A fast-trading manager's 13F says almost nothing about what it holds now.
+- LONG POSITIONS ONLY. Short positions, cash, most derivatives, and anything not on the SEC's list of 13(f) securities are absent. A long-short fund looks like a long-only one, and a put is reported by the value of the UNDERLYING shares, not by what the option cost.
+- Securities are identified by CUSIP and by nothing else. There is no ticker on a 13F and no free CUSIP master; `fails_to_deliver` is the only free bridge, and it covers only securities that have had a settlement fail.
+- THE UNIT OF `value` CHANGED. Filings made before 3 January 2023 report thousands of dollars and later ones report dollars, in the same field, with nothing in the payload saying which. It is normalised here by filing date; any other copy of this data must be checked for the same thing.
+- A restating amendment supersedes matching positions but cannot delete one: a holding dropped by a 13F-HR/A stays visible from the original filing. Managers may also omit positions under confidential treatment and disclose them up to a year later, so an early snapshot of a quarter is incomplete.
+- Filings before mid-2013 carry the holdings as free text, not XML, and are skipped rather than parsed by guesswork.
 
 ### sec_edgar
 
@@ -265,6 +316,76 @@ into the data-quality warnings panel of every tearsheet.
 - Amended filings (10-K/A) can arrive years later. Ingest must be able to add a fact with an old period without rewriting history.
 
 > The crown jewel of free fundamentals (spec 3.2).
+
+### sec_ftd
+
+**SEC fails-to-deliver data** — <https://www.sec.gov/data-research/sec-markets-data/fails-deliver-data>
+
+| Field | Value |
+| --- | --- |
+| Datasets | `fails_to_deliver` |
+| Asset classes | equity, reference |
+| Point-in-time | `as_published` |
+| Update frequency | twice monthly, two to six weeks after the settlement dates covered |
+| Reliability | stable |
+| Rate limit | 10 requests/second, descriptive User-Agent with contact REQUIRED |
+| Ingest throttle | 4.0 req/s |
+| Licence | US Government public domain |
+| API key | not required |
+
+**Caveats**
+
+- `quantity` is a BALANCE, not a flow: the total fails outstanding in that security on that day, including ones carried over. Summing it across days counts the same undelivered shares again for every day they stay open.
+- A fail is not evidence of naked short selling. The SEC says so on the page the data comes from: fails arise from long sales, processing delays and market-maker activity too, and the file cannot tell them apart.
+- A security appears only on days it has a balance, so absence means no fails, not missing data -- and it means the CUSIP-to-ticker bridge built from this file never sees a security that always settles cleanly.
+- `known_at` is the file's Last-Modified time. If the SEC ever re-uploads an old file, that history becomes knowable later than it really was, which errs in the safe direction but does err.
+
+### sec_insider
+
+**SEC EDGAR ownership filings (Forms 4 and 5)** — <https://www.sec.gov/search-filings/edgar-application-programming-interfaces>
+
+| Field | Value |
+| --- | --- |
+| Datasets | `insider_transactions` |
+| Asset classes | equity |
+| Point-in-time | `vintage` |
+| Update frequency | continuous; a Form 4 is due two business days after the trade |
+| Reliability | stable |
+| Rate limit | 10 requests/second, descriptive User-Agent with contact REQUIRED |
+| Ingest throttle | 8.0 req/s |
+| Licence | US Government public domain |
+| API key | not required |
+
+**Caveats**
+
+- MOST INSIDER TRANSACTIONS ARE NOT A VIEW ON THE STOCK. Grants (A), option exercises (M), shares withheld for tax (F) and gifts (G) dominate the filings of a large company. Only open-market purchases (P) and sales (S) are discretionary, and a sale under a 10b5-1 plan was scheduled months earlier. Filter on `transaction_code` before reading anything into it.
+- One request per filing. A large issuer has hundreds of Form 4s a year, so a wide universe over a long window is tens of thousands of requests at the SEC's pace. Keep the symbol list deliberate.
+- Amendments do not replace what they amend. A 4/A is a new filing with a new accession number, and the rows it corrects stay in the lake beside it; nothing links the two except the owner, the issuer and the dates.
+- Coverage follows the SEC's current ticker map, so a delisted or acquired issuer cannot be requested by ticker even though its filings still exist. This is survivorship bias in what can be ASKED FOR, not in what is stored.
+- Filings before mid-2003 are not XML and are skipped. Prices are sometimes given only in a footnote, and are then null rather than guessed.
+
+### senate_efd
+
+**US Senate electronic financial disclosures (eFD)** — <https://efdsearch.senate.gov/search/>
+
+| Field | Value |
+| --- | --- |
+| Datasets | `congress_trades` |
+| Asset classes | equity, reference |
+| Point-in-time | `vintage` |
+| Update frequency | continuous |
+| Reliability | scraped |
+| Rate limit | automated clients are refused (HTTP 403 as of 2026-09-20) |
+| Ingest throttle | 0.2 req/s |
+| Licence | Public record, behind a click-through agreement restricting use |
+| API key | not required |
+
+**Caveats**
+
+- NOT FETCHED, by decision. The site answers automated clients with 403 and requires accepting a use agreement before any search. Getting past either is a choice for a person to make about terms they have read, not a default for a scheduler to make on their behalf.
+- The community mirrors that once republished this data are gone or frozen: the Senate and House Stock Watcher buckets return 403, and the public GitHub copy of the Senate data ends in December 2020.
+
+> Catalogued so the gap in congressional coverage is explicit.
 
 ### stooq
 
@@ -768,4 +889,4 @@ into the data-quality warnings panel of every tearsheet.
 | Bloomberg, Refinitiv, FactSet | Paid. Excluded by the project's hard constraints. |
 | CRSP, Compustat | Paid. Their absence is the direct cause of the residual survivorship bias documented above. |
 | Paid TRACE feeds | Paid. The error-corrected academic bond dataset is used instead. |
-| Any broker execution API | The platform is research and paper trading only; there is no live order routing by design. |
+| Any broker execution API | This is a data pipeline; it has no order routing by design. |

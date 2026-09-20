@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# Ingestion and backtest worker, and (with a different command) the scheduler.
+# Ingestion worker, and (with a different command) the scheduler.
 # Both services share this image: they run the same code with different entry
 # commands, so there is no second dependency surface to keep in sync.
 

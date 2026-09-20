@@ -26,8 +26,9 @@ dist/
 htmlcov/
 coverage.xml
 
-# notebooks: committed, but never their outputs
-.ipynb_checkpoints/
+# interface: dependencies and build output
+/ui/node_modules/
+/ui/dist/
 
 # os / editor
 .DS_Store

@@ -1,8 +1,7 @@
 """The catalogue is documentation that the code depends on, so it is tested.
 
-Its invariants are not stylistic. A source with no recorded caveats produces a
-tearsheet with an empty data-quality panel, which reads as "this data is clean" --
-the exact impression the platform exists to prevent.
+Its invariants are not stylistic. A source with no recorded caveats reads as "this
+data is clean" -- the exact impression the catalogue exists to prevent.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ def test_every_source_declares_at_least_one_caveat() -> None:
     missing = [key for key, spec in SOURCES.items() if not spec.caveats]
     assert not missing, (
         f"sources with no recorded caveats: {missing}. Free data is never clean; "
-        "an empty caveat list renders as a clean bill of health in the tearsheet."
+        "an empty caveat list reads as a clean bill of health."
     )
 
 
@@ -43,11 +42,11 @@ def test_every_source_declares_an_asset_class_and_dataset() -> None:
         assert spec.datasets, f"{key} declares no dataset"
 
 
-def test_restated_sources_are_blocked_from_the_signal_path() -> None:
+def test_restated_sources_are_not_point_in_time_safe() -> None:
     restated = [s for s in SOURCES.values() if s.pit_quality is PitQuality.RESTATED]
     assert restated, "expected some sources to serve restated data"
     for spec in restated:
-        assert not spec.usable_in_signal_path
+        assert not spec.point_in_time_safe
 
 
 def test_fred_is_restated_and_alfred_is_not() -> None:

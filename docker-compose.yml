@@ -3,10 +3,8 @@
 # `make up` builds the shared base image first, then brings this up. Every service
 # is healthchecked, resource-limited and runs as a non-root user.
 #
-# Note what is NOT here: there is no market-data database service. Bulk market data
-# lives in the parquet lake on the `quantlab-data` volume and is queried in-process
-# by DuckDB (spec 3.8). Postgres exists only for paper-trading state, the run
-# registry and dashboard metadata.
+# Note what is NOT here: there is no database service. Market data lives in the
+# parquet lake on the `quantlab-data` volume and is queried in-process by DuckDB.
 
 x-quantlab-env: &quantlab-env
   QUANTLAB_ENV: docker
@@ -15,15 +13,9 @@ x-quantlab-env: &quantlab-env
   QUANTLAB_LOG_LEVEL: ${QUANTLAB_LOG_LEVEL:-INFO}
   QUANTLAB_LOG_FORMAT: ${QUANTLAB_LOG_FORMAT:-json}
   QUANTLAB_OFFLINE: ${QUANTLAB_OFFLINE:-false}
-  QUANTLAB_RANDOM_SEED: ${QUANTLAB_RANDOM_SEED:-20240101}
   QUANTLAB_HTTP_USER_AGENT: ${QUANTLAB_HTTP_USER_AGENT:-QuantLab/0.1 (unconfigured -- set QUANTLAB_HTTP_USER_AGENT)}
-  QUANTLAB_POSTGRES_HOST: db
-  QUANTLAB_POSTGRES_PORT: "5432"
-  QUANTLAB_POSTGRES_USER: ${QUANTLAB_POSTGRES_USER:-quantlab}
-  QUANTLAB_POSTGRES_PASSWORD: ${QUANTLAB_POSTGRES_PASSWORD:-quantlab}
-  QUANTLAB_POSTGRES_DB: ${QUANTLAB_POSTGRES_DB:-quantlab}
   # API keys. Every one is optional and defaults to empty; `quantlab doctor`
-  # reports which sources that makes unavailable (spec section 10).
+  # reports which sources that makes unavailable.
   QUANTLAB_FRED_API_KEY: ${QUANTLAB_FRED_API_KEY:-}
   QUANTLAB_EIA_API_KEY: ${QUANTLAB_EIA_API_KEY:-}
   QUANTLAB_USDA_NASS_API_KEY: ${QUANTLAB_USDA_NASS_API_KEY:-}
@@ -46,34 +38,6 @@ x-quantlab-code: &quantlab-code
   - ./tests:/app/tests:ro
 
 services:
-  db:
-    # TimescaleDB for the paper-trading time series (marks, fills, equity curve).
-    # Pinned to a digest-stable tag; both linux/amd64 and linux/arm64 are published.
-    image: timescale/timescaledb:2.17.2-pg16
-    container_name: quantlab-db
-    environment:
-      POSTGRES_USER: ${QUANTLAB_POSTGRES_USER:-quantlab}
-      POSTGRES_PASSWORD: ${QUANTLAB_POSTGRES_PASSWORD:-quantlab}
-      POSTGRES_DB: ${QUANTLAB_POSTGRES_DB:-quantlab}
-      # Deterministic collation, so ORDER BY on text is identical on every machine.
-      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
-    volumes:
-      - quantlab-pgdata:/var/lib/postgresql/data
-    # Not published to the host by default: nothing outside the compose network
-    # needs it, and an exposed Postgres with a default password is a liability.
-    expose:
-      - "5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${QUANTLAB_POSTGRES_USER:-quantlab} -d ${QUANTLAB_POSTGRES_DB:-quantlab}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits: { cpus: "1.0", memory: 1g }
-
   worker:
     build:
       context: .
@@ -87,8 +51,6 @@ services:
       - ./src:/app/src:ro
       - ./configs:/app/configs:ro
       - ./tests:/app/tests:ro
-    depends_on:
-      db: { condition: service_healthy }
     restart: unless-stopped
     deploy:
       resources:
@@ -114,64 +76,39 @@ services:
       - ./src:/app/src:ro
       - ./configs:/app/configs:ro
     depends_on:
-      db: { condition: service_healthy }
       worker: { condition: service_healthy }
     restart: unless-stopped
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 1g }
 
-  dashboard:
+  web:
     build:
       context: .
-      dockerfile: docker/Dockerfile.dashboard
+      dockerfile: docker/Dockerfile.web
       <<: *quantlab-build
-    image: quantlab-dashboard:local
-    container_name: quantlab-dashboard
+    image: quantlab-web:local
+    container_name: quantlab-web
     environment: *quantlab-env
     volumes:
-      - quantlab-data:/data
+      # Read-only: the app reads the lake and never writes to it.
+      - quantlab-data:/data:ro
       - ./src:/app/src:ro
       - ./configs:/app/configs:ro
-    # Bound to loopback: the dashboard has no authentication, so it must not be
-    # reachable from the local network.
+    # Bound to loopback: the app has no login, so it must not be reachable from
+    # the local network. Put it behind something that authenticates before
+    # changing this.
     ports:
-      - "127.0.0.1:${QUANTLAB_DASHBOARD_PORT:-8080}:8000"
+      - "127.0.0.1:${QUANTLAB_WEB_PORT:-8080}:8000"
     depends_on:
-      db: { condition: service_healthy }
+      worker: { condition: service_healthy }
     restart: unless-stopped
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 1g }
-
-  research:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.research
-      <<: *quantlab-build
-    image: quantlab-research:local
-    container_name: quantlab-research
-    environment: *quantlab-env
-    volumes:
-      - quantlab-data:/data
-      # Notebooks are writable; source is read-only from the container's side so a
-      # notebook cannot quietly edit the library it is supposed to be exercising.
-      - ./notebooks:/app/notebooks
-      - ./src:/app/src:ro
-      - ./configs:/app/configs:ro
-    ports:
-      - "127.0.0.1:${QUANTLAB_JUPYTER_PORT:-8888}:8888"
-    depends_on:
-      db: { condition: service_healthy }
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits: { cpus: "4.0", memory: 8g }
+        limits: { cpus: "2.0", memory: 2g }
 
 volumes:
   # Named, so ingested data survives `docker compose down` and image rebuilds
-  # (spec section 10). `make clean-data` is the only thing that removes it.
+  # `make clean-data` is the only thing that removes it.
   quantlab-data:
     name: quantlab-data
-  quantlab-pgdata:
-    name: quantlab-pgdata

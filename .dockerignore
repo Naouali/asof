@@ -1,7 +1,6 @@
 .git
 .github
 data
-notebooks/.ipynb_checkpoints
 **/__pycache__
 **/*.py[cod]
 .venv
@@ -17,3 +16,5 @@ htmlcov
 docker-compose.override.yml
 *.egg-info
 docs/_build
+ui/node_modules
+ui/dist

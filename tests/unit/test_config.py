@@ -28,14 +28,9 @@ def test_empty_key_is_treated_as_absent(monkeypatch: pytest.MonkeyPatch) -> None
     assert get_settings().secret_for("fred_api_key") is None
 
 
-def test_database_url_is_psycopg3(settings: Settings) -> None:
-    assert settings.database_url.startswith("postgresql+psycopg://")
-    assert settings.postgres_db in settings.database_url
-
-
 def test_settings_are_frozen(settings: Settings) -> None:
     with pytest.raises(ValidationError):
-        settings.random_seed = 1  # type: ignore[misc]
+        settings.http_max_retries = 1  # type: ignore[misc]
 
 
 def test_default_user_agent_is_obviously_unconfigured(settings: Settings) -> None:

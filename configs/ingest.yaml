@@ -46,9 +46,11 @@ jobs:
       split-adjusted, so use returns, not price levels. See docs/LIMITATIONS.md.
     start: "2005-01-01"
     symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ,
-              # The EDGAR fundamentals universe, so equity.profitability has
-              # something to trade rather than only something to score.
-              AAPL, MSFT, JNJ, KO, PG, XOM, JPM, PFE, WMT, HD, CVX, MRK, PEP, CSCO, INTC]
+              # The EDGAR fundamentals universe.
+              AAPL, MSFT, JNJ, KO, PG, XOM, JPM, PFE, WMT, HD, CVX, MRK, PEP, CSCO, INTC,
+              # The insider-transactions universe, so a ticker page has a price
+              # to draw its disclosures against.
+              NVDA, AMZN, GOOGL, META, TSLA, UNH]
 
   - fetcher: yahoo.corporate_actions
     description: >-
@@ -56,9 +58,11 @@ jobs:
       returns, since Yahoo's adj_close is restated under you.
     start: "2005-01-01"
     symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ,
-              # The EDGAR fundamentals universe, so equity.profitability has
-              # something to trade rather than only something to score.
-              AAPL, MSFT, JNJ, KO, PG, XOM, JPM, PFE, WMT, HD, CVX, MRK, PEP, CSCO, INTC]
+              # The EDGAR fundamentals universe.
+              AAPL, MSFT, JNJ, KO, PG, XOM, JPM, PFE, WMT, HD, CVX, MRK, PEP, CSCO, INTC,
+              # The insider-transactions universe, so a ticker page has a price
+              # to draw its disclosures against.
+              NVDA, AMZN, GOOGL, META, TSLA, UNH]
 
   - fetcher: stooq.ohlcv_daily
     description: >-
@@ -115,6 +119,62 @@ jobs:
     description: As-filed US company fundamentals from the XBRL company-facts API.
     start: "2010-01-01"
     symbols: [AAPL, MSFT, JNJ, KO, PG, XOM, JPM, PFE, WMT, HD, CVX, MRK, PEP, CSCO, INTC]
+
+  # ------------------------------------------------------- disclosed trades ----
+  # Insiders, institutions and politicians. Nobody here OBSERVES a trade: each of
+  # these is a legal disclosure filed days to months after the fact. `as_of` is
+  # when the trade happened and `known_at` is when the disclosure became public,
+  # and every window below filters on the second. Reading them by `as_of` is how
+  # "follow the smart money" results get manufactured.
+
+  - fetcher: sec_insider.insider_transactions
+    description: >-
+      Form 4 and 5 transactions by officers, directors and 10% owners. One request
+      per filing and a large issuer files a few hundred a year, so this list and
+      start date cost roughly fifteen minutes on a first run. Filter on
+      transaction_code before reading anything into it: only P and S are
+      open-market decisions; A, M, F and G are compensation and gifts.
+    start: "2024-01-01"
+    symbols: [AAPL, MSFT, NVDA, AMZN, GOOGL, META, TSLA, JPM, XOM, UNH]
+
+  - fetcher: sec_13f.institutional_holdings
+    description: >-
+      Quarter-end long positions of chosen managers. Symbols are manager CIKs,
+      written WITHOUT leading zeros: Berkshire Hathaway, Bridgewater, Renaissance
+      Technologies, Pershing Square, Scion, Citadel Advisors, Baupost, Tiger
+      Global. Find a CIK at https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany
+      -- names are refused, because they are not unique and they change.
+      Securities are identified by CUSIP; sec_ftd.fails_to_deliver is the bridge
+      to a ticker.
+    start: "2014-01-01"
+    symbols: [1067983, 1350694, 1037389, 1336528, 1649339, 1423053, 1061768, 1167483]
+
+  - fetcher: sec_ftd.fails_to_deliver
+    description: >-
+      Fails-to-deliver balances for every security, twice a month. About sixty
+      thousand rows and 1.4 MB a file, so an earlier start is cheap in requests
+      and heavy in rows. Also the only free CUSIP-to-ticker bridge for the 13F
+      holdings above.
+    start: "2025-01-01"
+    symbols: []
+
+  - fetcher: house_clerk.congress_filings
+    description: >-
+      The index of every House financial disclosure document. One small download
+      a year. Kept so that a transaction report which could not be read shows up
+      as a gap: listed here, absent from congress_trades.
+    start: "2015-01-01"
+    symbols: []
+
+  - fetcher: house_clerk.congress_trades
+    description: >-
+      Trades parsed out of House periodic transaction reports. One PDF per report
+      at one request a second, and the House files roughly five hundred a year,
+      so each year of history is about ten minutes. Scanned paper reports cannot
+      be read and yield nothing. The Senate is not covered; see `senate_efd` in
+      the catalogue for why.
+    start: "2025-01-01"
+    symbols: []
 
   # ------------------------------------------------------------ positioning ----
   # Weekly futures positioning. `as_of` is the Tuesday snapshot and `known_at` is

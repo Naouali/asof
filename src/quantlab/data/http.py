@@ -7,11 +7,11 @@ reinvent it, and so that the rules are auditable:
 * **Rate limits come from the catalogue**, not from each source's own guesswork.
   A token bucket per source enforces ``max_requests_per_second``, and Binance's
   weight headers additionally throttle us before the venue does.
-* **Offline mode is a hard refusal.** Once ingest has run, research is supposed to
-  read the lake. With ``QUANTLAB_OFFLINE=true``, a stray network call raises
+* **Offline mode is a hard refusal.** Once ingest has run, everything else is
+  supposed to read the lake. With ``QUANTLAB_OFFLINE=true``, a stray network call raises
   instead of quietly re-fetching and producing results that depend on the day.
 * **Failure is loud.** There is no fallback source, no empty frame on error, no
-  swallowed exception. Spec section 13: do not quietly substitute a different data
+  swallowed exception. Never quietly substitute a different data
   source when one fails.
 """
 
@@ -53,7 +53,7 @@ class SourceUnavailableError(SourceError):
 
 
 class OfflineError(SourceError):
-    """A network call was attempted while the platform is in offline mode."""
+    """A network call was attempted while offline mode is on."""
 
 
 class RateLimiter:
@@ -146,7 +146,7 @@ class HttpClient:
         if self.settings.offline:
             raise OfflineError(
                 self.spec.key,
-                f"offline mode is on, refusing to fetch {url}. Research must read the "
+                f"offline mode is on, refusing to fetch {url}. Readers must use the "
                 "lake; if you meant to ingest, unset QUANTLAB_OFFLINE.",
             )
         if not url.startswith("https://"):

@@ -1,25 +1,48 @@
 # QuantLab
 
-A multi-asset quantitative research and backtesting platform built entirely on free
-data sources.
+A multi-asset market data ETL built entirely on free data sources, and an app for
+reading what it collects. It connects to external APIs, fetches their data, and
+lands it in a local parquet lake that is queried in-process by DuckDB. The app,
+**asof**, reads the disclosure data in that lake: who traded, and when the world
+could first have known.
 
-**This system exists to tell you the truth about whether a signal works, not to
-produce impressive-looking equity curves.** A backtest that is easy to write but
-silently leaks future information is worse than no backtest at all, because it
-destroys capital with confidence.
-
-That principle is enforced structurally, not by discipline:
+Two properties are enforced structurally rather than left to discipline:
 
 | Concern | How it is enforced |
 | --- | --- |
-| Look-ahead bias | Signals read data only through a point-in-time snapshot that raises on any row learned after the as-of date |
-| Survivorship bias | Universes are built from historical constituent lists; every symbol observed is retained forever |
-| Transaction costs | Square-root market impact is the default; flat basis-point costs are not available as a default anywhere |
-| Overfitting | Deflated Sharpe with an **automatic** trial counter, probability of backtest overfitting, and combinatorial purged cross-validation |
-| Capacity | Every strategy result carries a break-even AUM; a strategy without one is not finished |
-| Data quality | Every source's known biases are structured data, rendered into every tearsheet |
+| Point-in-time | Every row records `as_of` (what it describes) and `known_at` (when it became knowable). The lake is append-only: a revision is a new row, so "what did we believe on date D" stays answerable |
+| Data quality | Every source's known biases are structured data in the catalogue, reported by `quantlab data catalogue` and rendered into [docs/DATA_CATALOGUE.md](docs/DATA_CATALOGUE.md) |
 
-Research and paper trading only. There is no live order routing, by design.
+A fetcher that cannot do its job fails loudly. Nothing here substitutes a fallback
+source, skips a failed job silently, or returns an empty frame to mean "error".
+
+## Sources
+
+| Fetcher | Dataset | Asset class | Point-in-time | Key |
+| --- | --- | --- | --- | --- |
+| `yahoo.ohlcv_daily` | daily bars | equity | survivorship-biased | none |
+| `yahoo.corporate_actions` | splits and dividends | equity | survivorship-biased | none |
+| `stooq.ohlcv_daily` | daily bars | equity | survivorship-biased | none — currently blocked by an anti-bot challenge |
+| `sec_edgar.fundamentals` | XBRL company facts, by filing date | equity | vintage | none (needs a real `User-Agent`) |
+| `binance.ohlcv_bars` | spot bars | crypto | as published | none |
+| `binance.funding_rate` | perpetual funding | crypto | as published | none |
+| `binance.instruments` | traded-universe snapshot | crypto | as published | none |
+| `fred.series_observations` | macro and rates, latest vintage | macro | restated | `QUANTLAB_FRED_API_KEY` |
+| `alfred.series_observations` | macro and rates, every vintage | macro | vintage | `QUANTLAB_FRED_API_KEY` |
+| `eia.series_observations` | US energy inventories | commodity | restated | `QUANTLAB_EIA_API_KEY` |
+| `cftc_cot.positioning` | Commitments of Traders | futures | as published | none |
+| `cboe.series_observations` | VIX-family indices | options | as published | none |
+| `options_snapshot.chain_snapshot` | delayed option chains | options | as published | none |
+| `sec_insider.insider_transactions` | insider trades (Forms 4 and 5) | equity | vintage | none (needs a real `User-Agent`) |
+| `sec_13f.institutional_holdings` | quarterly holdings of chosen managers (13F) | equity | vintage | none (needs a real `User-Agent`) |
+| `sec_ftd.fails_to_deliver` | fails-to-deliver balances; the CUSIP→ticker bridge | equity | as published | none (needs a real `User-Agent`) |
+| `house_clerk.congress_trades` | trades disclosed by members of the US House | equity | vintage | none |
+| `house_clerk.congress_filings` | index of every House disclosure document | reference | vintage | none |
+| `ken_french.series_observations` | factor returns | factors | restated | none |
+| `open_asset_pricing.anomaly_catalogue` | published anomaly catalogue | reference | restated | none |
+
+`quantlab data fetchers` prints this list with whether each can run right now.
+The catalogue also documents sources that have no fetcher yet.
 
 ## Quick start
 
@@ -28,22 +51,56 @@ Docker is the only prerequisite.
 ```bash
 git clone <this repo> && cd quantlab
 cp .env.example .env     # optional: the stack runs unchanged, with zero API keys
-make up                  # builds images, starts the stack, waits for health, runs doctor
+make up                  # builds images, starts worker + scheduler + web, runs doctor
+make ingest              # the app is empty until there is data to read
 ```
 
-Then:
-
-- dashboard — http://127.0.0.1:8080
-- Jupyter — http://127.0.0.1:8888
+The app is then at <http://127.0.0.1:8080>.
 
 ```bash
 make doctor        # what this installation can and cannot do
 make catalogue     # every data source, its availability, its known biases
-make ingest        # pull data into the lake (works with zero API keys)
+make fetchers      # every fetcher and whether it can run right now
+make ingest        # full historical pull into the lake (works with zero API keys)
+make ingest-daily  # incremental update
 make status        # what the lake holds and how stale it is
 make test
 make down
 ```
+
+`make help` lists every target.
+
+Without Docker, in a Python 3.11–3.12 environment:
+
+```bash
+uv sync
+uv run quantlab init
+uv run quantlab data ingest --dry-run     # show the windows without fetching
+uv run quantlab data ingest
+```
+
+## What gets ingested
+
+[configs/ingest.yaml](configs/ingest.yaml) is the ingest plan: one job per fetcher,
+with its symbols, start date and options. Symbol lists are deliberately small —
+widen them once you know what you need.
+
+```bash
+quantlab data ingest                              # every job in the plan
+quantlab data ingest --incremental                # resume from what the lake holds
+quantlab data ingest -f binance.ohlcv_bars        # one fetcher
+quantlab data ingest --dry-run                    # show the windows, fetch nothing
+```
+
+The command exits non-zero if any job failed. Jobs skipped for a missing API key
+are listed but are not failures.
+
+The `scheduler` service runs the recurring jobs in
+[configs/schedule.yaml](configs/schedule.yaml): a weekday incremental pull, an
+hourly crypto pull, a daily pull of insider, 13F and congressional disclosures,
+and a daily options-chain snapshot. **Leave the options
+snapshot on** — no free source sells historical option chains, so that dataset's
+history starts the day the job first runs and cannot be backfilled.
 
 ## Querying the lake
 
@@ -51,8 +108,8 @@ make down
 # Inspection: sees everything, including data nobody could have known at the time.
 quantlab data query "select symbol, count(*) from ohlcv_daily group by 1"
 
-# Research: only what was knowable on 2020-03-16, enforced in a sandbox that
-# cannot reach the lake files at all.
+# Point-in-time: only what was knowable on 2020-03-16, in a sandbox that cannot
+# reach the lake files at all.
 quantlab data query --as-of 2020-03-16 -d ohlcv_daily \
   "select symbol, max(as_of) from ohlcv_daily group by 1"
 ```
@@ -62,304 +119,178 @@ In Python:
 ```python
 from quantlab.data.store import Store
 
-snapshot = Store().as_of("2020-03-16")
+store = Store()
+store.sql("select * from ohlcv_daily limit 5")   # everything
+
+snapshot = store.as_of("2020-03-16")
 bars = snapshot.ohlcv_daily(symbols=["SPY"])     # nothing after 2020-03-16
 snapshot.ohlcv_daily(end="2020-06-01")           # raises LookAheadError
 ```
 
-`make help` lists every target.
+The lake is plain parquet under `data/lake/`, partitioned by
+source / dataset / asset class / year, so anything that reads parquet can read it.
+
+## Disclosed trades: insiders, whales and politicians
+
+Four sources cover who is buying and selling: company insiders (SEC Forms 4 and
+5), large managers such as Berkshire or Bridgewater (SEC Form 13F), members of the
+US House (STOCK Act reports), and fails-to-deliver balances. None of them observes
+a trade. Each is a disclosure filed days to months later, so `as_of` is when the
+trade happened and `known_at` is when anyone outside could first have known —
+always query these with `--as-of`.
+
+```bash
+quantlab data ingest -f sec_insider.insider_transactions -f sec_13f.institutional_holdings \
+                     -f sec_ftd.fails_to_deliver \
+                     -f house_clerk.congress_filings -f house_clerk.congress_trades
+```
+
+```bash
+# Open-market insider trades only. Grants (A), option exercises (M) and tax
+# withholding (F) are most of what is filed, and say nothing about the stock.
+quantlab data query --as-of 2026-09-20 -d insider_transactions \
+  "select symbol, as_of::date traded, known_at::date disclosed, owner_name, officer_title,
+          transaction_code, shares, price, planned_10b5_1
+   from insider_transactions
+   where transaction_code in ('P', 'S') and not is_derivative order by known_at desc"
+
+# A manager's latest KNOWABLE portfolio, with tickers. A 13F knows securities by
+# CUSIP only; fails_to_deliver is the free bridge to a ticker.
+quantlab data query --as-of 2026-09-20 -d institutional_holdings -d fails_to_deliver \
+  "with bridge as (select cusip, mode(symbol) ticker from fails_to_deliver group by cusip)
+   select h.issuer_name, b.ticker, h.shares, h.value_usd
+   from institutional_holdings h left join bridge b using (cusip)
+   where h.symbol = '1067983'
+     and h.as_of = (select max(as_of) from institutional_holdings where symbol = '1067983')
+   order by h.value_usd desc"
+
+# What the House disclosed, and how late.
+quantlab data query --as-of 2026-09-20 -d congress_trades \
+  "select member, symbol, transaction_type, amount_text, as_of::date traded,
+          known_at::date disclosed, date_diff('day', as_of, known_at) days_late
+   from congress_trades where symbol <> 'NO_TICKER' order by known_at desc"
+
+# House transaction reports that could NOT be read (scanned paper filings).
+# These members' trades are absent from congress_trades, not zero. Bounded to the
+# period congress_trades covers: the index is cheap and the plan ingests it from
+# 2015, the PDFs only from 2025, and a report nobody tried to read is not a scan.
+quantlab data query --as-of 2026-09-20 -d congress_filings -d congress_trades \
+  "select f.last_name, f.symbol district, f.as_of::date filed, f.url
+   from congress_filings f
+   where f.filing_type = 'P'
+     and f.known_at >= (select min(known_at) from congress_trades)
+     and f.doc_id not in (select doc_id from congress_trades)"
+```
+
+Managers are chosen in [configs/ingest.yaml](configs/ingest.yaml) by SEC CIK,
+written without leading zeros (Berkshire Hathaway is `1067983`). The Senate is not
+covered: its disclosure site refuses automated clients. Read the "Disclosed
+trades" section of [docs/LIMITATIONS.md](docs/LIMITATIONS.md) before drawing
+conclusions from any of this.
+
+## The app
+
+**asof** is a read-only web app over the disclosure data: insiders, funds and
+members of the House. It is built around the one thing that data is about -- the
+gap between the day somebody traded and the day anyone else could know.
+
+- **Feed.** Every disclosure, ordered by the day it became public. Pick one and
+  its record opens beside the list: what happened, the chain from the trade to
+  the legal deadline to the filing, and what else that person and that company
+  have disclosed. Grants, option exercises and pre-scheduled sales are hidden
+  until asked for, because they are most of what is filed and none of it is a
+  view on the stock. The arrow keys walk the list.
+- **As of.** One control, top right, moves the whole app to the end of any past
+  day. Nothing disclosed later is shown, anywhere. The date lives in the URL, so
+  a view of the past can be bookmarked and sent to a colleague.
+- **Timeline.** The same feed as a chart: each disclosure a line from the trade
+  to the day it became public. Travel back in time and a curtain is drawn at the
+  as-of date, with a second block above it -- trades that had *already happened*
+  and that nobody outside could see yet.
+- **Ticker pages.** The price, with every disclosure drawn as a chord from the
+  trade date to the disclosure date, so the slope is what the price did before
+  anyone could act. Below it: every disclosure naming the ticker, the tracked
+  funds that hold it (joined through the CUSIP bridge, with how stale that is),
+  and the settlement fails.
+- **Data health.** What the lake holds, how fresh it is, and which House reports
+  were scans that could not be read.
+
+```bash
+make up                         # with Docker: http://127.0.0.1:8080
+make ui && make serve           # without: needs Node 22 and the Python environment
+make ui-dev                     # interface with hot reload on :5173, against `make serve`
+```
+
+The API is documented at `/api/docs`. It only reads: no route writes to the lake,
+starts an ingest or touches the network.
+
+> **There is no login yet.** Anyone who can reach the port can read everything.
+> The defaults keep that to this machine -- `quantlab serve` binds to loopback, the
+> compose file publishes to `127.0.0.1` only and mounts the lake read-only -- and
+> `quantlab serve --host` says so out loud when asked for anything wider. Put it
+> behind something that authenticates before exposing it. Team features that
+> need to know who you are (notes, alerts, saved views) are deliberately absent
+> rather than faked.
 
 ## Running with no API keys
 
-The stack starts and runs with none. Keyless sources cover US Treasury and ECB
-rates, Frankfurter FX, Stooq and Yahoo prices, **SEC EDGAR point-in-time
-fundamentals**, the Ken French and Open Source Asset Pricing factor libraries, CFTC
-positioning, CBOE volatility and every crypto venue — enough for the complete Tier 1
-signal set.
+The stack starts and runs with none. Keyless sources cover Yahoo prices, SEC EDGAR
+point-in-time fundamentals, the Ken French and Open Source Asset Pricing libraries,
+CFTC positioning, CBOE volatility and Binance.
 
-Adding a free FRED key unlocks macro and rates work, including the ALFRED vintage
-archive, which is the only way to build a macro signal without look-ahead bias.
-`quantlab doctor` names every unavailable source and the environment variable that
-would enable it.
+A free FRED key unlocks macro and rates, including the ALFRED vintage archive —
+the only way to read a macro series as it was known at the time. `quantlab doctor`
+names every unavailable source and the environment variable that would enable it.
 
-## Costing a trade
+Before ingesting SEC EDGAR, set `QUANTLAB_HTTP_USER_AGENT` to something carrying a
+real contact address. The SEC requires it, and `doctor` warns while it is a
+placeholder.
 
-```bash
-# Decomposed, with what a flat model would have claimed
-quantlab costs estimate -n 200e6 --adv 8e9 --vol 0.018 --spread 1.2 --compare-flat 10
+## Adding a source
 
-# The number every finished strategy needs
-quantlab costs capacity --alpha 25 --turnover 0.4 --rebalances 12 --names 200
-```
-
-There is deliberately **no flat basis-point cost model available as a default**.
-Flat costs are roughly right for the small trades a researcher tests on and wildly
-optimistic at deployment size, which makes every strategy look scalable and every
-capacity estimate infinite.
-
-## Running a backtest
-
-```bash
-quantlab backtest --config configs/backtest_example.yaml
-```
-
-The config's `as_of` fixes the point-in-time snapshot the run reads, so re-running
-months later sees the same data — and the same vintage of any restated series —
-rather than whatever the lake has learned since.
-
-What the engine enforces rather than assumes: signal on the close of T traded at
-the open of T+1; forward-fill capped at a configured limit; a delisting return
-applied when an instrument vanishes; calendar-day financing accrual; and
-cash-and-position accounting reconciled every bar by two independent routes, with
-a breach stopping the run.
-
-A 30-year, 3,000-name backtest with full costs runs in about 7 seconds.
-
-## The signal library
-
-```bash
-quantlab signals list                    # tiered by evidence, not by interest
-quantlab signals show carry.fx           # reference, and how it is known to fail
-quantlab signals run trend.time_series_momentum --as-of 2026-09-18
-```
-
-Every signal declares its datasets, cadence, expected turnover, academic reference
-and **how it is known to fail** — the last is validated, on the grounds that if you
-cannot name how a signal goes wrong you do not understand it well enough to trade
-it. Signals return scores, never weights; portfolio construction owns those.
-
-Signals whose data the free catalogue cannot supply are implemented and **refuse to
-run**, naming what is missing. An empty cross-section looks exactly like a signal
-with no view.
-
-## Building a portfolio
-
-Signals produce scores; this turns them into a book, and reports the risk each
-position actually carries rather than only its weight.
-
-```bash
-quantlab portfolio covariance -s SPY -s QQQ -s TLT -s GLD --as-of 2026-09-18
-quantlab portfolio build -s SPY -s QQQ -s TLT -s GLD --as-of 2026-09-18 -m risk-parity
-```
-
-An equal-weighted book of correlated assets routinely puts most of its risk in one
-place while looking perfectly diversified on the weights, so `build` prints both.
-Covariance is Ledoit-Wolf shrunk by default, with the intensity derived rather than
-chosen. `--method mean-variance` uses a **flat prior of zero** for expected returns,
-never the sample mean: sample means are noisy enough that optimising on them
-reliably produces a worse portfolio than equal weighting.
-
-Constraints that cannot be satisfied raise instead of returning something
-plausible. `Constraints.long_only()` caps a position at 10%, so on eight names the
-largest possible book is 80% of capital against a net target of 100% — SLSQP
-answers that with a weight vector that looks fine and violates the constraints.
-
-## Is it secretly just beta?
-
-```bash
-quantlab risk attribute -s IWM --as-of 2026-09-18     # against Ken French factors
-quantlab risk pca -s SPY -s TLT -s GLD --as-of 2026-09-18   # when none are available
-```
-
-Standard errors are Newey-West. Strategy returns are autocorrelated, and OLS
-standard errors on autocorrelated data come out too small — inflating every
-t-statistic toward finding alpha that is not there.
-
-Validated against instruments whose answer is known: SPY attributes to a market
-beta of 0.993 with alpha of +0.02% a year (t = 0.04); IWM loads +0.93 on the
-small-cap factor because it *is* the small-cap index; TLT's market beta is −0.002.
-Getting SPY's alpha to zero took fixing two real bugs — see
-[docs/MILESTONES.md](docs/MILESTONES.md).
-
-## Reporting a result
-
-```bash
-quantlab report --config configs/backtest_example.yaml           # to the terminal
-quantlab report -c configs/backtest_example.yaml -f html -o s.html
-```
-
-The tearsheet **refuses to render** a Sharpe ratio without its deflated value and
-trial count, and refuses to render at all without a capacity estimate. Both are
-constructor arguments with no default and no override flag, so the failure mode is
-a report that will not build rather than one that quietly omits the inconvenient
-parts. Panels are ordered worst-first: a strategy that fails deflation says so
-above its equity curve. `report` exits non-zero when the result is disqualified,
-because the exit code is the only part of a tearsheet a script reads.
-
-The example ETF momentum run opens with:
-
-```
-NOT EVIDENCE that etf-momentum-12-1 works:
-  - The deflated Sharpe of 0.470 is below 0.95: after 1 trial(s) this result is
-    not distinguishable from the best of the search.
-  - There is no AUM at which this strategy makes money after costs. Spread,
-    commission and holding costs exceed the gross edge at any size; this is not
-    a capacity problem, the signal does not pay.
-```
-
-That is a real result on real data, and printing it is the point.
-
-## Does it work everywhere, or only on some names?
-
-The most natural question to ask of an idea, and the most dangerous one to answer
-by reading a table.
-
-```bash
-quantlab validate sweep                                   # across instruments
-quantlab validate sweep --signal trend.time_series_momentum \
-    --param vol_window=15,21,30,42,63,90,126              # across parameters
-```
-
-Every cell is a trial, and the spread across cells is judged against the null that
-the signal has no edge anywhere — under which the cross-sectional variance of the
-t-statistics is exactly 1. Real heterogeneity is kept; anything at or below chance
-is shrunk to nothing, however good the best cell looked.
-
-On 29 instruments of trend: QQQ tops the table at t = +1.98, `Var(t) = 0.55`, and
-**nothing survives**. QQQ is the maximum of 29 noisy draws, not an instrument the
-signal suits.
-
-The measured value of that correction, over 200 sweeps of 14 pure-noise cells:
-
-| | sweeps reporting a "winner" |
-| --- | --- |
-| naive \|t\| ≥ 2 | **109 / 200 (54%)** |
-| after the correction | **1 cell in 2,800** |
-
-That is the difference between a search that finds something every other time you
-run it and one that almost never does.
-
-**One subtlety the tool states rather than hides.** The null assumes cells are
-*independent*; under it Var(t) = 1. Correlated cells move together and push it
-toward 0. So a very low variance does not mean "tested many ways and failed" — it
-means the cells were nearly the same experiment. Sweeping seven `vol_window`
-values gives Var(t) = 0.01, and the honest reading is that the parameter does not
-matter, not that the signal was tested seven ways.
-
-## What the literature already tried
-
-```bash
-quantlab validate anomalies --t-stat 2.4
-```
-
-Chen & Zimmermann catalogued every published cross-sectional equity predictor they
-could find, with the t-statistic the original paper reported. Of 212 predictors the
-median is **4.0** and only **2.7%** fall below |t| = 2 — a distribution truncated
-exactly where journals stop accepting papers. The signals that were tried and
-abandoned are absent by construction, so it is a *lower bound* on how hard the
-space has been searched.
-
-That is the context a t-statistic needs before it means anything, and it is why
-this platform will not print a Sharpe without a trial count.
-
-## The local UI
-
-```bash
-quantlab dashboard          # http://127.0.0.1:8080
-```
-
-Two pages. `/` is read-only operational status — environment, heartbeats, lake,
-sources, paper books. `/research` is interactive: compute a signal's scores, sweep
-it across instruments or parameters, run a backtest and read its tearsheet, and
-see the running trial count.
-
-It binds to **loopback with no authentication**, and the research endpoints run
-backtests on request — so `--host 0.0.0.0` exposes an unauthenticated way to
-consume the machine. Nothing served can route an order.
-
-One deliberate design point: a browser drops the cost of trying one more idea from
-typing a command to clicking a button, and every idea tried is a trial the next
-Sharpe is deflated against. So the UI shows the trial count beside the results,
-warns *before* a sweep rather than after, and refuses a parameter grid larger than
-40 cells with the reason — that size of grid is a search of that size.
-
-## Paper trading
-
-```bash
-quantlab paper run --signal trend.time_series_momentum --as-of 2026-09-18 \
-    --symbol SPY --symbol QQQ --symbol TLT
-quantlab paper book  --strategy trend.time_series_momentum
-quantlab paper decay --strategy trend.time_series_momentum --backtest-sharpe 1.2
-```
-
-**Nothing is routed anywhere.** Spec section 1 puts live execution outside v1, so
-`Broker` is an abstract seam, `PaperBroker` is the only implementation, and a test
-asserts there is no second one. What would change if an adapter were written is
-documented at the seam.
-
-Fills are charged the **backtest's own cost model** — a paper book filling at mid
-would beat its own backtest for no reason. Cycles are idempotent per date, so
-re-running after a failure is safe.
-
-`paper decay` answers the question people skip. Not "has it decayed" but "can you
-yet tell":
-
-```
-trend.time_series_momentum: 8 observations is too few to conclude anything.
-The standard error of a Sharpe over this sample is 2.34 annualised, which is
-wider than most of the effects anyone is looking for.
-```
-
-It compares against the *haircut* backtest Sharpe (×0.53), because a strategy
-delivering half its backtest is behaving exactly as predicted.
-
-## Validating a result
-
-Every backtest records itself as a trial, and the count deflates the Sharpe it
-reports. There is no way to search quietly and still quote a deflated number.
-
-```bash
-quantlab validate trials              # what the platform has counted
-quantlab validate trials momentum     # the individual configurations
-quantlab validate library             # empirical-Bayes shrinkage across families
-quantlab validate sharpe 1.8 --years 10 --trials 300   # deflate a published number
-```
-
-A Sharpe of 1.5 over five years is worth 1.000 after one trial, 0.155 after two
-hundred, and 0.003 after ten thousand. That is the entire point.
-
-**No statistic here detects survivorship bias.** The red-team suite asserts it, so
-that a clean validation report is never mistaken for evidence of a clean universe.
+1. Describe it in [src/quantlab/data/catalogue.py](src/quantlab/data/catalogue.py):
+   URL, licence, rate limit, point-in-time quality, and every known caveat.
+2. Add a module under [src/quantlab/data/sources/](src/quantlab/data/sources/) with
+   a `Source` subclass decorated with `@register`, whose
+   `fetch(symbols, start, end)` returns a frame conforming to a schema in
+   [schemas.py](src/quantlab/data/schemas.py). Set `known_at` honestly, raise on
+   failure, never fall back to another source.
+3. List the module in `SOURCE_MODULES` in
+   [sources/\_\_init\_\_.py](src/quantlab/data/sources/__init__.py).
+4. Record a real payload under `tests/fixtures/` and test the parser against it —
+   the unit suite blocks all network access.
+5. Add a job to `configs/ingest.yaml`, then run
+   `python scripts/gen_data_catalogue.py` to refresh the catalogue document.
 
 ## Layout
 
 ```
+ui/                 the interface: React + TypeScript, no UI kit, built by Vite
 src/quantlab/
-  data/        sources, ingest, parquet lake + DuckDB, trading calendars, point-in-time
-  universe/    investable universe construction
-  signals/     signal library, by asset class, tiered by evidence quality
-  costs/       square-root impact, spread, financing, borrow, capacity
-  portfolio/   sizing, vol targeting, turnover-aware optimisation
-  backtest/    vectorised research engine, event-driven engine, paper trading
-  validation/  CPCV, deflated Sharpe, PBO, empirical-Bayes luck adjustment
-  risk/        factor risk model and exposure attribution
-  reporting/   tearsheets and dashboard data
+  api/              the web app: read-only API over the lake, serves ui/dist
+    events.py       one shape for three kinds of disclosure
+    queries.py      what each page asks of the lake, through one as-of "lens"
+  cli.py            the `quantlab` command
+  scheduler.py      cron-style runner for recurring ingests
+  health.py         `quantlab doctor`
+  config.py         settings, read from QUANTLAB_* environment variables
+  data/
+    sources/        one module per external API (sec_filings.py is shared EDGAR plumbing)
+    ingest.py       ingest plans and incremental windows
+    http.py         rate-limited, retrying HTTP client with a hard offline mode
+    schemas.py      canonical dataset schemas
+    store.py        the parquet lake and DuckDB queries
+    pit.py          point-in-time snapshots
+    calendars.py    trading calendars
+    catalogue.py    source metadata and caveats
+configs/
+  ingest.yaml       what to fetch
+  schedule.yaml     when to fetch it
 ```
-
-Layers depend downward only. Notebooks are for exploring; anything that produces a
-number you might act on lives in `src/` with a test.
 
 ## Documentation
 
-- [docs/LIMITATIONS.md](docs/LIMITATIONS.md) — **read this first.** What the platform cannot tell you
-- [docs/ADDING_A_SIGNAL.md](docs/ADDING_A_SIGNAL.md) — how to add a signal, and why the bureaucracy exists
-- [docs/DATA_CATALOGUE.md](docs/DATA_CATALOGUE.md) — every source and every caveat
-- [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md) — every conservative choice made under ambiguity
-- [docs/MILESTONES.md](docs/MILESTONES.md) — build order and current status
-
-## Status
-
-Milestones 1–5 of 12 complete: repository skeleton, Docker stack and CI; the data
-layer — parquet lake, point-in-time snapshots, trading calendars and eight fetchers
-across Yahoo, Binance and FRED/ALFRED; the cost models — square-root impact,
-Almgren-Chriss scheduling, spread estimation with its bias problem documented,
-financing and borrow, and the capacity calculator; the vectorised backtest engine
-with its accounting identities enforced every bar; the validation module — purged
-cross-validation, deflated Sharpe with an automatic trial counter, PBO,
-empirical-Bayes shrinkage, and a red-team suite of deliberately broken strategies;
-and the Tier 1 signal library with its Ken French benchmark.
-
-Commands whose implementation lands in a later milestone exit non-zero naming that
-milestone, rather than returning an empty result that could be mistaken for a
-successful run. See [docs/MILESTONES.md](docs/MILESTONES.md) for what is built and
-what is still unverified.
+- [docs/DATA_CATALOGUE.md](docs/DATA_CATALOGUE.md) — every source and every caveat (generated)
+- [docs/LIMITATIONS.md](docs/LIMITATIONS.md) — what this data cannot tell you
+- [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md) — the choices made under ambiguity
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — why it is built this way

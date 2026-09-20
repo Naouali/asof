@@ -1,7 +1,7 @@
 """FRED and ALFRED.
 
 These are two fetchers against one API, and the difference between them is the
-difference between an honest macro signal and a fictional one.
+difference between an honest macro history and a fictional one.
 
 ``fred.series_observations``
     The current vintage of a series. For a series that is **never revised** --
@@ -20,8 +20,8 @@ To make the distinction impossible to fudge, **this module refuses to ingest a
 series it has not been told how to treat**. :data:`SERIES_POLICY` classifies each
 series as never-revised (with its publication lag) or revised (ALFRED only).
 Adding a series means making that call explicitly, which is the point: the failure
-mode being prevented here is someone pulling `GDPC1` from FRED, getting a
-beautiful macro signal, and never learning why it does not work live.
+mode being prevented here is someone pulling `GDPC1` from FRED, reading 2008
+through 2026's revisions, and never learning that they did.
 """
 
 from __future__ import annotations
@@ -132,7 +132,7 @@ def _policy(series_id: str) -> SeriesPolicy:
             f"series {series_id!r} has no revision policy. Add it to "
             "quantlab.data.sources.fred.SERIES_POLICY, declaring explicitly whether "
             "it is ever revised. Ingesting an unclassified series is how a macro "
-            "backtest quietly starts using values that did not exist at the time.",
+            "history quietly starts holding values that did not exist at the time.",
         ) from None
 
 
@@ -202,8 +202,8 @@ class FredSeries(_FredBase):
                 raise SourceError(
                     self.spec.key,
                     f"{series_id} ({policy.description}) is revised, and FRED serves "
-                    "only the latest vintage. Using it here would mean a 2008 backtest "
-                    "reading GDP as restated in 2026. Ingest it through "
+                    "only the latest vintage. Using it here would mean reading 2008's "
+                    "GDP as restated in 2026. Ingest it through "
                     "`alfred.series_observations` instead.",
                 )
 
@@ -237,7 +237,7 @@ class FredSeries(_FredBase):
 class AlfredVintageSeries(_FredBase):
     """Every vintage of a series, with ``known_at`` set to the vintage start.
 
-    This is the only free way to build a macro signal that does not know the
+    This is the only free way to read a macro series without knowing the
     future. It is also slow -- one row per (observation, vintage) pair, and a
     long revised series has many -- so ingest it incrementally.
     """

@@ -1,9 +1,7 @@
-"""System self-diagnosis -- the engine behind `quantlab doctor` and `/health`.
+"""System self-diagnosis -- the engine behind `quantlab doctor`.
 
-Spec section 10 requires the stack to start with zero API keys and to "degrade
-gracefully with a clear message for each unavailable source". That message is
-produced here, once, and rendered by both the CLI and the dashboard so the two can
-never disagree.
+The stack is required to start with zero API keys and to degrade gracefully with
+a clear message for each unavailable source. That message is produced here.
 """
 
 from __future__ import annotations
@@ -61,8 +59,7 @@ def source_availability(settings: Settings | None = None) -> list[SourceAvailabi
     """Report which catalogued sources are usable with the credentials present.
 
     A missing key is a WARN, never an error: keyless sources cover macro rates, US
-    equities, academic factors, futures positioning and all of crypto, which is
-    enough to run the whole Tier 1 signal set.
+    equities, academic factors, futures positioning and all of crypto.
     """
     settings = settings or get_settings()
     out: list[SourceAvailability] = []
@@ -87,7 +84,7 @@ def _check_python() -> Check:
             "python",
             Status.FAIL,
             f"Python {major}.{minor} is too old",
-            "QuantLab requires Python 3.11+ (spec section 1).",
+            "QuantLab requires Python 3.11+.",
         )
     return Check("python", Status.OK, f"Python {major}.{minor}")
 
@@ -192,7 +189,7 @@ def _check_sources(settings: Settings) -> Check:
         Status.WARN,
         f"{total - len(unavailable)}/{total} sources available; missing keys for: {names}",
         "The stack runs without these. Keyless sources cover macro, US equities, "
-        "academic factors and all of crypto -- enough for the Tier 1 signals.",
+        "academic factors and all of crypto.",
     )
 
 
@@ -201,22 +198,9 @@ def _check_offline(settings: Settings) -> Check:
         return Check(
             "offline",
             Status.OK,
-            "offline mode: network calls are refused, research reads the lake only",
+            "offline mode: network calls are refused, only the lake is readable",
         )
     return Check("offline", Status.OK, "online: ingestion permitted")
-
-
-def _check_determinism(settings: Settings) -> Check:
-    hash_seed = os.environ.get("PYTHONHASHSEED")
-    if hash_seed != "0":
-        return Check(
-            "determinism",
-            Status.WARN,
-            f"PYTHONHASHSEED={hash_seed!r}",
-            "Set PYTHONHASHSEED=0 for byte-identical results across runs "
-            "(the Docker images already do).",
-        )
-    return Check("determinism", Status.OK, f"PYTHONHASHSEED=0, random_seed={settings.random_seed}")
 
 
 def run_checks(settings: Settings | None = None) -> list[Check]:
@@ -226,7 +210,6 @@ def run_checks(settings: Settings | None = None) -> list[Check]:
         Check("version", Status.OK, f"quantlab {__version__} (env={settings.env})"),
         _check_python(),
         _check_data_root(settings),
-        _check_determinism(settings),
         _check_offline(settings),
         _check_user_agent(settings),
         _check_sources(settings),

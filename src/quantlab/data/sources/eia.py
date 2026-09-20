@@ -9,7 +9,7 @@ source with this coverage.
 *It is revised, and there is no vintage archive.* EIA restates weekly inventories
 and monthly production, and the API serves only the current value. There is no
 ALFRED equivalent: the number as first published is simply gone. Every row here
-therefore carries ``vintage=False``, and a backtest reading it is reading a
+therefore carries ``vintage=False``, and anyone reading its history is reading a
 figure that was corrected after the fact. That is look-ahead, it cannot be
 removed by anything this module does, and the only honest mitigations are to lag
 the series well past the revision window or to treat results built on it as an
@@ -184,8 +184,8 @@ class EiaEnergyStocks(Source):
             rows=len(rows),
             reason=(
                 "EIA revises these series and serves only the current value; the "
-                "figure as first published is not archived anywhere, so a backtest "
-                "reading them has look-ahead that cannot be removed here"
+                "figure as first published is not archived anywhere, so their history "
+                "has look-ahead that cannot be removed here"
             ),
         )
         return self.finalise(rows)

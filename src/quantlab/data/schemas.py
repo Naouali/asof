@@ -17,8 +17,7 @@ is the entire point of this module:
 ``ingested_at``
     When our process wrote the row. Audit only; never used for filtering.
 
-The spec asks for ``as_of`` and ``ingested_at``. ``known_at`` is a deliberate
-extension: collapsing "when the world learned it" into "when we learned it" makes
+``known_at`` is kept apart from ``ingested_at`` deliberately: collapsing "when the world learned it" into "when we learned it" makes
 ALFRED vintages and EDGAR filed dates unusable, and those are the only genuine
 point-in-time data available for free. See docs/ASSUMPTIONS.md.
 
@@ -98,7 +97,7 @@ class DatasetSchema:
         """Return ``frame`` coerced to this schema, or raise :class:`SchemaError`.
 
         Validation is strict on purpose. A source that quietly returns a column of
-        strings where floats are expected produces a backtest that silently skips
+        strings where floats are expected produces a reader that silently skips
         those rows, and a skipped row is indistinguishable from a missing one.
         """
         expected = self.polars_schema
@@ -229,7 +228,7 @@ DATASETS: dict[str, DatasetSchema] = {
         description=(
             "Perpetual futures funding payments. `as_of` is the funding timestamp. "
             "The funding formula and interval have changed over time on every venue, "
-            "so a carry backtest spanning a change is comparing different instruments."
+            "so a series spanning a change is comparing different instruments."
         ),
         columns={
             "funding_rate": pl.Float64(),
@@ -262,7 +261,7 @@ DATASETS: dict[str, DatasetSchema] = {
             "the distinction is the whole value of SEC EDGAR over every restated "
             "free source. A restatement arrives as a new row with a later known_at, "
             "and the superseded value stays visible to earlier snapshots, which is "
-            "what makes a fundamentals backtest honest."
+            "what makes a historical view of fundamentals honest."
         ),
         columns={
             "metric": pl.Utf8(),
@@ -281,8 +280,8 @@ DATASETS: dict[str, DatasetSchema] = {
             "`as_of` is the SNAPSHOT date -- the Tuesday a Commitments of Traders "
             "report counts positions on -- and `known_at` is the RELEASE instant, "
             "the following Friday at 15:30 America/New_York. The gap between them "
-            "is three days wide and is the single most common look-ahead bias in "
-            "published COT research: the Tuesday number simply did not exist until "
+            "is three days wide and is the single most common look-ahead error in "
+            "published work on this report: the Tuesday number simply did not exist until "
             "Friday afternoon. No CFTC payload carries the release date, so it is "
             "derived, and rows whose release cannot be established honestly are "
             "refused rather than dated optimistically."
@@ -362,6 +361,152 @@ DATASETS: dict[str, DatasetSchema] = {
         },
         key=("symbol", "expiry", "strike", "right"),
         required=("expiry", "strike", "right"),
+    ),
+    "insider_transactions": DatasetSchema(
+        name="insider_transactions",
+        description=(
+            "Trades by a company's own officers, directors and 10% owners, one row "
+            "per transaction line of an SEC Form 4 or 5. `as_of` is the TRANSACTION "
+            "date and `known_at` is the instant EDGAR accepted the filing -- usually "
+            "two business days later, and sometimes months. `symbol` is the issuer's "
+            "ticker. `transaction_code` is the SEC's own: P and S are open-market "
+            "purchases and sales; A, M, F and G are grants, option exercises, tax "
+            "withholding and gifts, which are not a view on the share price. An "
+            "amendment (4/A) is a new filing with its own accession and does NOT "
+            "replace the rows it corrects."
+        ),
+        columns={
+            "issuer_cik": pl.Int64(),
+            "issuer_name": pl.Utf8(),
+            "owner_cik": pl.Int64(),
+            "owner_name": pl.Utf8(),
+            "is_director": pl.Boolean(),
+            "is_officer": pl.Boolean(),
+            "is_ten_percent_owner": pl.Boolean(),
+            "officer_title": pl.Utf8(),
+            "form": pl.Utf8(),
+            "accession": pl.Utf8(),
+            "line": pl.Int64(),
+            "security_title": pl.Utf8(),
+            "is_derivative": pl.Boolean(),
+            "transaction_code": pl.Utf8(),
+            "acquired_disposed": pl.Utf8(),
+            "shares": pl.Float64(),
+            "price": pl.Float64(),
+            "shares_owned_after": pl.Float64(),
+            "ownership": pl.Utf8(),
+            "planned_10b5_1": pl.Boolean(),
+        },
+        key=("symbol", "accession", "line"),
+        required=("accession", "line", "owner_name", "transaction_code", "is_derivative"),
+    ),
+    "institutional_holdings": DatasetSchema(
+        name="institutional_holdings",
+        description=(
+            "Quarter-end long positions of an institutional manager, from SEC Form "
+            "13F. `symbol` is the MANAGER's CIK -- the entity a job asks for -- and "
+            "the security is identified by `cusip`, because a 13F carries no ticker. "
+            "`as_of` is the quarter end the positions are counted on and `known_at` "
+            "is the instant EDGAR accepted the filing, up to 45 days later: the "
+            "holdings are already six weeks stale on the day they become knowable. "
+            "One row per (cusip, put_call, shares_type), summed over the lines a "
+            "manager splits a position across. `value_usd` is in dollars for every "
+            "era, including filings from before 2023 that reported thousands."
+        ),
+        columns={
+            "manager_name": pl.Utf8(),
+            "cusip": pl.Utf8(),
+            "issuer_name": pl.Utf8(),
+            "title_of_class": pl.Utf8(),
+            "put_call": pl.Utf8(),
+            "shares_type": pl.Utf8(),
+            "shares": pl.Float64(),
+            "value_usd": pl.Float64(),
+            "lines": pl.Int64(),
+            "form": pl.Utf8(),
+            "amendment_type": pl.Utf8(),
+            "accession": pl.Utf8(),
+        },
+        key=("symbol", "cusip", "put_call", "shares_type"),
+        required=("cusip", "put_call", "shares_type", "accession"),
+    ),
+    "congress_filings": DatasetSchema(
+        name="congress_filings",
+        description=(
+            "The index of financial disclosure documents filed by members of "
+            "Congress and candidates: one row per document, whatever its type. "
+            "`symbol` is the state and district, `as_of` is the filing date. It "
+            "exists so that the gap in `congress_trades` is queryable: a periodic "
+            "transaction report (`filing_type` P) listed here with no rows there is "
+            "a report that could not be read -- usually a scanned paper filing -- "
+            "and NOT a member who did not trade."
+        ),
+        columns={
+            "chamber": pl.Utf8(),
+            "doc_id": pl.Utf8(),
+            "filing_type": pl.Utf8(),
+            "filing_type_name": pl.Utf8(),
+            "prefix": pl.Utf8(),
+            "first_name": pl.Utf8(),
+            "last_name": pl.Utf8(),
+            "suffix": pl.Utf8(),
+            "year": pl.Int64(),
+            "url": pl.Utf8(),
+        },
+        key=("symbol", "doc_id"),
+        required=("chamber", "doc_id", "filing_type", "last_name"),
+    ),
+    "congress_trades": DatasetSchema(
+        name="congress_trades",
+        description=(
+            "Securities transactions disclosed by members of Congress under the "
+            "STOCK Act, one row per transaction line of a periodic transaction "
+            "report. `as_of` is the TRANSACTION date and `known_at` the end of the "
+            "day the report was filed -- the law allows 45 days between them and "
+            "late filings run to months. `symbol` is the ticker the member wrote, "
+            "or NO_TICKER for a bond, fund or private holding. The size is a RANGE, "
+            "never a figure: `amount_min` and `amount_max` are the bounds of the "
+            "bracket, and `amount_max` is null for an open-ended one."
+        ),
+        columns={
+            "chamber": pl.Utf8(),
+            "doc_id": pl.Utf8(),
+            "line": pl.Int64(),
+            "member": pl.Utf8(),
+            "state_district": pl.Utf8(),
+            "owner": pl.Utf8(),
+            "asset": pl.Utf8(),
+            "asset_type": pl.Utf8(),
+            "transaction_type": pl.Utf8(),
+            "notification_date": pl.Date(),
+            "amount_min": pl.Float64(),
+            "amount_max": pl.Float64(),
+            "amount_text": pl.Utf8(),
+            "filing_status": pl.Utf8(),
+            "url": pl.Utf8(),
+        },
+        key=("symbol", "doc_id", "line"),
+        required=("chamber", "doc_id", "line", "member", "transaction_type", "amount_min"),
+    ),
+    "fails_to_deliver": DatasetSchema(
+        name="fails_to_deliver",
+        description=(
+            "Shares that failed to settle, per security per day, as reported by "
+            "NSCC to the SEC. `as_of` is the SETTLEMENT date and `known_at` is when "
+            "the SEC posted the file, two to six weeks later. `quantity` is the "
+            "cumulative balance outstanding that day, NOT that day's new fails, so "
+            "summing it across days counts the same shares repeatedly. Each row "
+            "pairs a CUSIP with a ticker, which makes this the only free bridge "
+            "from `institutional_holdings` to a price series."
+        ),
+        columns={
+            "cusip": pl.Utf8(),
+            "quantity": pl.Float64(),
+            "description": pl.Utf8(),
+            "price": pl.Float64(),
+        },
+        key=("symbol", "cusip"),
+        required=("cusip", "quantity"),
     ),
     "instruments": DatasetSchema(
         name="instruments",

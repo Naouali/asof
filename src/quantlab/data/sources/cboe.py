@@ -8,16 +8,16 @@ the standard input for a volatility-regime filter.
 ``series_observations`` rather than ``ohlcv_daily``, deliberately. VIX spot cannot
 be bought: the tradeable expressions are futures, options and ETPs, each with its
 own roll cost and basis, and every one of them has underperformed spot VIX by a
-wide margin over any long horizon. Filing an index under a dataset the backtest
-engine treats as tradeable would let a strategy "buy VIX" and collect a return
-nobody could have earned. The open, high and low are discarded for the same
+wide margin over any long horizon. Filing an index beside tradeable bars would
+invite anyone reading the lake to "buy VIX" and count a return nobody could have
+earned. The open, high and low are discarded for the same
 reason: with no execution possible, an intraday range has no execution meaning.
 
 **The series are not continuous instruments.** The methodology changed in 2003,
 when CBOE moved VIX from the old OEX-implied-volatility calculation to the
 model-free variance-swap formula; the pre-2003 series under the old method is
-VXO, a different index. A backtest spanning 2003 is trading two instruments and
-calling them one. That boundary is recorded per series here and repeated in
+VXO, a different index. A series spanning 2003 is two instruments under one
+name. That boundary is recorded per series here and repeated in
 docs/LIMITATIONS.md.
 """
 

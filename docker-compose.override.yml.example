@@ -5,24 +5,13 @@
 
 services:
   # Raise the worker's limits on a big machine, or lower them on a laptop that
-  # needs to do other things during a 30-year backtest.
+  # needs to do other things during a full historical ingest.
   worker:
     deploy:
       resources:
         limits:
           cpus: "8.0"
           memory: 24g
-
-  # Publish Postgres to the host to attach a SQL client. Change the password first:
-  # the default is `quantlab`.
-  # db:
-  #   ports:
-  #     - "127.0.0.1:5432:5432"
-
-  # Run the dashboard with autoreload while editing it.
-  # dashboard:
-  #   command: ["uvicorn", "quantlab.dashboard.app:app", "--host", "0.0.0.0",
-  #             "--port", "8000", "--reload", "--reload-dir", "/app/src"]
 
   # Debug logging everywhere.
   # worker:

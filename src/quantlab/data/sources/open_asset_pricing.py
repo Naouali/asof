@@ -5,13 +5,10 @@ predictor they could find in a published paper, with the effect size and
 t-statistic the original authors reported, and their own assessment of whether it
 replicates.
 
-**Why this platform carries it.** Spec section 0 says the system exists to tell
-you whether a signal works, and section 7 makes the trial count mandatory on every
-Sharpe ratio. This file is the trial count of the entire literature. Of 212
-published predictors the median reported t-statistic is 4.0 and only 2.7% fall
-below 2.0 -- a distribution truncated exactly where journals stop accepting
-papers. A new signal with a t-statistic of 2.5 is not unusual against that
-backdrop; it is below the median of a set that is itself selected on significance.
+**Why it is worth having.** It is a census of what the literature has tried. Of
+212 published predictors the median reported t-statistic is 4.0 and only 2.7%
+fall below 2.0 -- a distribution truncated exactly where journals stop accepting
+papers, which makes it the clearest free picture of publication bias in finance.
 
 ``as_of`` is the end of the original sample and ``known_at`` is publication,
 because those are different questions: in-sample fit ends at the first, and

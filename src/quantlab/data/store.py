@@ -14,8 +14,7 @@ taking the latest ``known_at`` at or before the query's as-of instant.
 **Path pruning.** Filters are pushed into the glob, so a query for one dataset in
 one year touches one directory rather than scanning the lake.
 
-**No server.** DuckDB runs in-process over the parquet files. Postgres exists in
-this system only for paper-trading state and the run registry.
+**No server.** DuckDB runs in-process over the parquet files.
 """
 
 from __future__ import annotations
@@ -92,12 +91,11 @@ def _as_utc(
     ``start`` gives 00:00:00, ``end`` gives 23:59:59.999999. Both are needed. If a
     bare date always meant end-of-day, then ``scan(start=T, end=T)`` would exclude
     every bar that closed during T and return nothing -- a silently empty result,
-    which is precisely the failure this platform exists to prevent.
+    which is precisely the failure this project exists to prevent.
 
     The snapshot instant uses the ``end`` boundary, so ``as_of(T)`` includes the
-    close of T. That matches the rebalance convention in spec section 6.4 -- signal
-    computed on the close of T, traded at T+1 -- and is recorded in
-    docs/ASSUMPTIONS.md. Pass a datetime when you need intraday precision.
+    close of T: "as of Tuesday" means everything knowable by the end of Tuesday.
+    It is recorded in docs/ASSUMPTIONS.md. Pass a datetime when you need intraday precision.
     """
     if isinstance(moment, str):
         # "2024-01-04" is a date and must be widened to a day boundary. Passing it
@@ -307,7 +305,8 @@ class Store:
 
         This connection can read the whole lake, including rows that were not
         knowable at any particular date. It is for data inspection and ingest
-        health checks, **not** for signals -- use :meth:`as_of` for those.
+        health checks, **not** for any question about the past -- use
+        :meth:`as_of` for those.
         """
         import duckdb
 
@@ -326,7 +325,7 @@ class Store:
         return connection
 
     def sql(self, query: str) -> pl.DataFrame:
-        """Run SQL against the whole lake. Not point-in-time; not for signals."""
+        """Run SQL against the whole lake. Not point-in-time: for inspection only."""
         with self.connect() as connection:
             return connection.execute(query).pl()
 
@@ -334,7 +333,7 @@ class Store:
     def as_of(self, moment: dt.datetime | dt.date | str) -> Snapshot:
         """Return a point-in-time view of everything knowable at ``moment``.
 
-        This is the only interface signals may use. See :mod:`quantlab.data.pit`.
+        This is the only honest way to read the past. See :mod:`quantlab.data.pit`.
         """
         from quantlab.data.pit import Snapshot
 

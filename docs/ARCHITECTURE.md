@@ -1,81 +1,115 @@
 # Architecture
 
-## Layering
-
-Dependencies point downward only. A test walks the import graph of `src/quantlab`
-and fails on any upward edge.
+## Flow
 
 ```
-        cli / dashboard / reporting
-                    |
-        backtest  /  validation
-                    |
-        portfolio  /  risk
-                    |
-        costs  /  signals
-                    |
-        data  /  universe
+configs/ingest.yaml          what to fetch
+        |
+  data/ingest.py             plan -> jobs -> date windows (full or incremental)
+        |
+  data/sources/*.py          one fetcher per external API, over data/http.py
+        |
+  data/schemas.py            every frame is validated against a canonical schema
+        |
+  data/store.py              append-only parquet lake, queried by embedded DuckDB
+        |
+  data/pit.py                point-in-time snapshots over the lake
 ```
 
-`config`, `logging`, `paths`, `runtime` and `health` sit outside the layer stack:
-they are leaf utilities anything may import.
+```
+  api/queries.py             a Lens: one snapshot, and the events derived from it
+        |
+  api/app.py                 read-only HTTP API, which also serves the built UI
+        |
+  ui/                        the interface (React + TypeScript), built to static files
+```
+
+`cli.py` drives it by hand; `scheduler.py` drives it on a cron from
+`configs/schedule.yaml`. `data/catalogue.py` is pure metadata describing every
+source, and is imported by all of the above.
+
+`config`, `logging`, `paths`, `runtime` and `health` are leaf utilities anything
+may import.
 
 ## Why these choices
 
-**Polars, not pandas, in the signal path.** pandas' implicit index makes
-time-misalignment bugs easy to write and invisible to review: a join that silently
-aligns a fundamental to the wrong date is look-ahead bias that produces a beautiful
-equity curve. Polars has no implicit index, and its lazy engine makes the
-computation graph inspectable. Enforced by a ruff banned-import rule and by a test
-that ignores `# noqa`.
+**Polars, not pandas.** pandas' implicit index makes time-misalignment bugs easy to
+write and invisible to review: a join that silently aligns an observation to the
+wrong date looks fine. Polars has no implicit index. Enforced by a ruff
+banned-import rule and by a test that ignores `# noqa`.
 
-**DuckDB over parquet, not a database server.** Research queries are analytical
-scans over columnar files. DuckDB does that in-process, at speed, with no service to
-run, no schema migrations, and no network hop. Postgres exists only for
-paper-trading state, the run registry and dashboard metadata — mutable,
-transactional, small.
+**DuckDB over parquet, not a database server.** Queries over market data are
+analytical scans over columnar files. DuckDB does that in-process, at speed, with
+no service to run, no schema migrations, and no network hop. The lake is plain
+Hive-partitioned parquet, so anything else that reads parquet can read it too.
 
-**Every row carries `as_of` and `ingested_at`.** `as_of` is the date the observation
-refers to; `ingested_at` is when we learned it. Point-in-time queries filter on the
-second. For sources that revise without publishing vintages, `ingested_at` is the
-only vintage we have, which is why daily snapshotting starts as early as possible.
+**Every row carries `as_of`, `known_at` and `ingested_at`.** `as_of` is the instant
+the observation refers to; `known_at` is when it became knowable — the vintage or
+publication instant for a source that revises, `as_of` for one that does not;
+`ingested_at` is when we downloaded it. Point-in-time queries filter on `known_at`.
+For sources that revise without publishing vintages, our own download time is the
+only vintage there is, which is why recurring snapshots start as early as possible.
+
+**Append-only.** Ingest never rewrites a file. A restatement arrives as a new row
+with a later `known_at`; the superseded value stays on disk, which is what keeps
+"what did we believe on date D" answerable.
+
+**Incremental ingest has no cursor file.** The resume point is derived from the
+lake itself — the newest `as_of` stored for that source and dataset — minus an
+overlap window that catches late corrections. A cursor file is state that can
+disagree with the data it describes.
+
+**Failure is loud.** No fallback source, no empty frame on error, no swallowed
+exception. An empty result is indistinguishable from a successful run that found
+nothing, so a failed job exits non-zero instead.
+
+**Offline mode is a hard refusal.** With `QUANTLAB_OFFLINE=true` a stray network
+call raises, so anything reading the lake is provably reading the lake.
 
 **Heartbeats, not PIDs, for health.** A deadlocked process keeps its PID.
 
-**Unimplemented commands exit non-zero.** An empty result is indistinguishable from
-a successful run that found nothing. That ambiguity is the failure mode the whole
-platform exists to prevent, so it is not allowed in the CLI either.
+**The app only reads.** No route writes to the lake, starts an ingest or reaches
+the network, and the compose file mounts the lake read-only into it. Data arrives
+by `quantlab data ingest`. That is what makes the app safe to leave running, and
+it keeps one process responsible for what is in the lake.
+
+**"As of" is decided once.** Every page is a pure function of a `Lens` -- one
+point-in-time snapshot and the events derived from it -- so a query written later
+cannot forget the date. A date means the END of that day in Washington, because
+that is when the last thing filed on it became public. The one exception is
+labelled: when the reader is in the past, the feed also returns what had already
+happened and was not public yet, under its own key, and the interface draws it
+only behind the timeline's curtain.
+
+**One event shape.** A Form 4, a House report and a 13F become the same thing:
+somebody did something on one day, and the world found out on another. The feed,
+the ticker page and search never learn which filing a row came from.
+
+**No UI kit, no CDN.** The interface is hand-written CSS and hand-drawn SVG, with
+its fonts bundled. It looks like itself rather than like a component library, it
+works offline, and it runs under a content-security policy that allows nothing
+from anywhere else.
+
+**No login yet, said plainly.** `/api/health` reports `authentication: none`,
+`quantlab serve` binds to loopback and warns when asked for more, and compose
+publishes to `127.0.0.1` only. A test asserts the binding.
 
 ## Containers
 
 | Service | Image | Role |
 | --- | --- | --- |
-| `db` | `timescale/timescaledb` | Paper-trading state, run registry, dashboard metadata. **Never bulk market data.** |
-| `worker` | `quantlab-worker` | Ingestion and backtest execution; the container `make shell` and `make backtest` run in. |
+| `worker` | `quantlab-worker` | The container `make ingest` and `make shell` run in. |
 | `scheduler` | `quantlab-worker` | APScheduler driving `configs/schedule.yaml`; runs each job as a subprocess so a crash cannot take the scheduler down. |
-| `dashboard` | `quantlab-dashboard` | FastAPI reporting UI. Local assets only — no CDN, so it works offline. |
-| `research` | `quantlab-research` | Jupyter Lab with the repo's `src` mounted read-only. |
+| `web` | `quantlab-web` | The app, on `127.0.0.1:8080`. Node builds the interface in a first stage and is not shipped. The lake is mounted read-only. |
 
-DuckDB is embedded, not a service.
+DuckDB is embedded, not a service. There is no database container.
 
 The `quantlab-data` named volume holds the lake and survives `docker compose down`
 and every image rebuild. Only `make clean-data` removes it, and it asks first.
 
-## Where a live broker adapter would attach
-
-There is none, by design. When one is eventually written, it attaches below
-`backtest/paper.py`: the paper loop already produces *target positions* and *intended
-trades* as data. A live adapter would consume that same interface and add order
-placement, fill reconciliation and position synchronisation against the broker's
-record of truth. Nothing above that boundary should need to change — and nothing
-above it should ever import a broker SDK, which a test currently enforces.
-
 ## Where to go next
 
-- [ADDING_A_SIGNAL.md](ADDING_A_SIGNAL.md) — the full process for a new signal,
-  including the three mistakes that do not look like mistakes: a reversed sign,
-  a mixed reporting basis, and a timestamp join that appears to work.
-- [LIMITATIONS.md](LIMITATIONS.md) — what constrains every result, then what
-  constrains each component.
-- [ASSUMPTIONS.md](ASSUMPTIONS.md) — every choice made under ambiguity, and why
-  it was the conservative one. Numbered, so a decision can be cited.
+- [DATA_CATALOGUE.md](DATA_CATALOGUE.md) — every source and every caveat.
+- [LIMITATIONS.md](LIMITATIONS.md) — what this data cannot tell you.
+- [ASSUMPTIONS.md](ASSUMPTIONS.md) — every choice made under ambiguity. Numbered,
+  so a decision can be cited.

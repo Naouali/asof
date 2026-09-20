@@ -29,13 +29,12 @@ HEADER = """<!-- GENERATED FILE -- do not edit by hand.
 
 # Data catalogue
 
-Every external source this platform can read, what it provides, and how it lies to
+Every external source this ETL can read, what it provides, and how it lies to
 you. Free data is never clean; the purpose of this document is to make the ways in
 which it is dirty impossible to overlook.
 
-The same information is structured data in `src/quantlab/data/catalogue.py`, is
-reported by `quantlab data catalogue`, is served at `/api/sources`, and is rendered
-into the data-quality warnings panel of every tearsheet.
+The same information is structured data in `src/quantlab/data/catalogue.py` and is
+reported by `quantlab data catalogue`.
 
 ## How to read the point-in-time column
 
@@ -49,11 +48,8 @@ into the data-quality warnings panel of every tearsheet.
 ## The three biases that matter most here
 
 1. **Survivorship bias in equities.** It cannot be fully solved without paid CRSP.
-   What the platform does instead: builds universes from historical index
-   constituent and SEC filer lists rather than from tickers that exist today,
-   retains every delisted ticker once observed, prefers the academic factor
-   datasets where the bias would dominate, and flags residual bias on every equity
-   tearsheet.
+   What the lake does instead: retains every delisted ticker once observed, and
+   marks each affected source `survivorship_biased` so a consumer cannot miss it.
 2. **Restated macro data.** FRED serves the latest vintage of every series. Any
    macro signal must read ALFRED vintages instead.
 3. **No free historical options data.** The options snapshot collector accumulates
@@ -70,7 +66,7 @@ FOOTER = """
 | Bloomberg, Refinitiv, FactSet | Paid. Excluded by the project's hard constraints. |
 | CRSP, Compustat | Paid. Their absence is the direct cause of the residual survivorship bias documented above. |
 | Paid TRACE feeds | Paid. The error-corrected academic bond dataset is used instead. |
-| Any broker execution API | The platform is research and paper trading only; there is no live order routing by design. |
+| Any broker execution API | This is a data pipeline; it has no order routing by design. |
 """
 
 

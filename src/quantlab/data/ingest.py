@@ -18,7 +18,7 @@ once. A genuine correction arrives as a new row with a later ``known_at``, and t
 old value stays on disk where a point-in-time query can still find it.
 
 **Failure is loud and total.** A failing job is recorded and the run exits
-non-zero. Nothing is substituted, nothing is skipped silently (spec section 13).
+non-zero. Nothing is substituted, nothing is skipped silently.
 """
 
 from __future__ import annotations
@@ -334,7 +334,7 @@ def run_plan(
         source = job.build(settings)
         available, reason = source.availability()
         if not available:
-            # A missing API key is not a failure of the run: the platform is
+            # A missing API key is not a failure of the run: the stack is
             # required to work with zero keys. It is reported, never hidden.
             source.close()
             log.warning("ingest.unavailable", fetcher=job.fetcher, reason=reason)

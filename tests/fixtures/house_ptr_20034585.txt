@@ -1,0 +1,175 @@
+P        T           R     
+Clerk of the House of Representatives • Legislative Resource Center • B81 Cannon Building • Washington, DC 20515
+F     I          
+Name: Hon. Josh Gottheimer
+Status: Member
+State/District: NJ05
+T           
+ID Owner Asset Transaction
+Type
+Date Notification
+Date
+Amount Cap.
+Gains >
+$200?
+JT 3M Company Common Stock (MMM)
+[ST]
+S (partial) 04/28/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT Advanced Micro Devices, Inc. (AMD)
+[ST]
+P 04/27/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT Advanced Micro Devices, Inc. (AMD)
+[ST]
+P 04/23/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT Ally Financial Inc. Common Stock
+(ALLY) [ST]
+S 04/09/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT AT&T Inc. (T) [ST] S 04/09/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT CBIZ, Inc. Common Stock (CBZ) [ST] P 04/06/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+Filing ID #20034585
+ID Owner Asset Transaction
+Type
+Date Notification
+Date
+Amount Cap.
+Gains >
+$200?
+JT Darden Restaurants, Inc. Common
+Stock (DRI) [ST]
+S 04/09/2026 05/05/2026 $15,001 -
+$50,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT Dollar Tree, Inc. - Common Stock
+(DLTR) [ST]
+S 04/09/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT First Watch Restaurant Group, Inc. -
+Common Stock (FWRG) [ST]
+P 04/06/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT Ford Motor Company Common Stock
+(F) [ST]
+S 04/09/2026 05/05/2026 $15,001 -
+$50,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT Freeport-McMoRan, Inc. Common
+Stock (FCX) [ST]
+P 04/15/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT Goldman Sachs Group, Inc. (GS) [ST] P 04/16/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT Goldman Sachs Group, Inc. (GS) [ST] S 04/09/2026 05/05/2026 $15,001 -
+$50,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT HDFC Bank Limited Common Stock
+(HDB) [ST]
+S (partial) 04/13/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT Home Depot, Inc. (HD) [ST] S 04/09/2026 05/05/2026 $15,001 -
+$50,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT Infineon Technologies AG (IFNNY) P 04/13/2026 05/05/2026 $1,001 - $15,000
+ID Owner Asset Transaction
+Type
+Date Notification
+Date
+Amount Cap.
+Gains >
+$200?
+[ST]
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT Intapp, Inc. - Common Stock (INTA)
+[ST]
+P 04/13/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT International Business Machines
+Corporation Common Stock (IBM)
+[ST]
+S (partial) 04/24/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT MarketAxess Holdings, Inc. -
+Common Stock (MKTX) [ST]
+S 04/09/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT Martin Marietta Materials, Inc.
+Common Stock (MLM) [ST]
+S 04/09/2026 05/05/2026 $15,001 -
+$50,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT NetEase, Inc. - American Depositary
+Shares, each representing 5 ordinary
+shares (NTES) [ST]
+P 04/06/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT Performance Food Group Company
+Common Stock (PFGC) [ST]
+S 04/09/2026 05/05/2026 $15,001 -
+$50,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT ServiceNow, Inc. Common Stock
+(NOW) [ST]
+S 04/24/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Select UMA Account # 1
+JT Synchrony Financial Common Stock
+(SYF) [ST]
+S 04/09/2026 05/05/2026 $15,001 -
+$50,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+ID Owner Asset Transaction
+Type
+Date Notification
+Date
+Amount Cap.
+Gains >
+$200?
+JT Tractor Supply Company - Common
+Stock (TSCO) [ST]
+S 04/09/2026 05/05/2026 $15,001 -
+$50,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+JT Valley National Bancorp (VLY) [ST] S 04/09/2026 05/05/2026 $1,001 - $15,000
+F      S     : New
+S          O : Morgan Stanley - Active Asset Account # 3
+* For the complete list of asset type abbreviations, please visit https://fd.house.gov/reference/asset-type-codes.aspx.
+I          V       D      
+Morgan Stanley - Active Asset Account # 3 (Owner: JT)
+L       : US
+Morgan Stanley - Select UMA Account # 1 (Owner: JT)
+L       : US
+I       P      O        
+ Yes  No
+C                 S        
+ I CERTIFY that the statements I have made on the attached Periodic Transaction Report are true, complete, and correct to the best of
+my knowledge and belief. Further, I CERTIFY that I have disclosed all transactions as required by the STOCK Act.
+Digitally Signed: Hon. Josh Gottheimer , 05/19/2026

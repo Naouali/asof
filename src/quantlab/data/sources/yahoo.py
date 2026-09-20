@@ -11,7 +11,7 @@ visible in this file instead of buried behind a convenience layer.
    undocumented methodology and *recomputed* whenever Yahoo reprocesses a
    corporate action. It is stored, because it is useful for a quick look, but its
    ``known_at`` is a lie: we record it as the session close like the rest of the
-   row, while in truth today's value was not knowable then. Do not build a signal
+   row, while in truth today's value was not knowable then. Do not rely
    on it. Build total returns from ``close`` plus the ``corporate_actions``
    dataset, whose dividends and splits each carry their own ex-date.
 
@@ -23,7 +23,7 @@ visible in this file instead of buried behind a convenience layer.
    penny-stock filters, round-number effects, nominal price momentum -- wrong in a
    way that will not raise.
 
-Both facts are recorded in the catalogue and rendered into tearsheets.
+Both facts are recorded in the catalogue.
 """
 
 from __future__ import annotations
@@ -55,8 +55,8 @@ CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 #: Yahoo sometimes returns materially less history than requested, with no error
 #: and no indication in the payload. Observed 2026-09-20: the same URL for SPY
 #: returned 5030 bars starting 2006-09-20 on one call and 5462 bars starting
-#: 2005-01-03 minutes later. A silently shortened sample period changes a
-#: backtest's conclusions without anyone noticing, so coverage is verified and the
+#: 2005-01-03 minutes later. A silently shortened history changes every
+#: conclusion drawn from it without anyone noticing, so coverage is verified and the
 #: request retried before the data is accepted.
 COVERAGE_ATTEMPTS = 3
 
@@ -119,8 +119,8 @@ class _YahooChart(Source):
 
         Yahoo truncates history non-deterministically. Retrying usually gets the
         full range; when it does not, this raises rather than accepting a shorter
-        sample, because a backtest run over 2006-2026 instead of 2005-2026 is a
-        different experiment and nothing else would say so.
+        sample, because 2006-2026 instead of 2005-2026 is a different history
+        and nothing else would say so.
         """
         shortfall = ""
         for attempt in range(1, COVERAGE_ATTEMPTS + 1):

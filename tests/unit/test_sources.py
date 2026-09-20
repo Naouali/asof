@@ -16,7 +16,7 @@ import pytest
 from tests.conftest import load_fixture, load_json_fixture
 
 from quantlab.config import Settings
-from quantlab.data.http import HttpClient, SourceError, SourceUnavailableError
+from quantlab.data.http import HttpClient, RateLimiter, SourceError, SourceUnavailableError
 from quantlab.data.sources.base import SOURCE_REGISTRY, Source, get_fetcher
 from quantlab.data.sources.binance import BinanceFunding, BinanceInstruments, BinanceKlines
 from quantlab.data.sources.fred import SERIES_POLICY, AlfredVintageSeries, FredSeries
@@ -41,6 +41,46 @@ def fixture_source(
         cls.spec, settings=settings, client=httpx.Client(transport=httpx.MockTransport(handler))
     )
     return cls(client=http, settings=settings, **kwargs)  # type: ignore[arg-type]
+
+
+def routed_source(
+    cls: type[Source],
+    routes: dict[str, object],
+    settings: Settings,
+    *,
+    headers: dict[str, str] | None = None,
+    **kwargs: object,
+) -> tuple[Source, list[str]]:
+    """Build a fetcher whose transport answers by URL, and record what it asked for.
+
+    ``routes`` maps a URL fragment to a payload; the first fragment found in the
+    requested URL wins, so list the specific ones first. An unrouted URL is a 404,
+    which is what a fetcher reaching for a document it should not need looks like.
+    """
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        requested.append(url)
+        for fragment, payload in routes.items():
+            if fragment not in url:
+                continue
+            if isinstance(payload, bytes):
+                return httpx.Response(200, content=payload, headers=headers)
+            if isinstance(payload, str):
+                return httpx.Response(200, text=payload, headers=headers)
+            return httpx.Response(200, json=payload, headers=headers)
+        return httpx.Response(404, text="not routed")
+
+    http = HttpClient(
+        cls.spec,
+        settings=settings,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        # The catalogued pace is for a real server. Nothing is being protected
+        # here, and a one-request-a-second source would sleep through the suite.
+        rate_limiter=RateLimiter(1000.0),
+    )
+    return cls(client=http, settings=settings, **kwargs), requested  # type: ignore[arg-type]
 
 
 # ----------------------------------------------------------------------- registry --

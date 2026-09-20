@@ -3,7 +3,7 @@
 Marked `integration` and skipped unless a Docker daemon is reachable, so the unit
 suite stays runnable anywhere. CI runs this in its own job (see .github/workflows).
 
-This is the automated half of the spec's acceptance criterion: on a clean machine
+This is the automated half of the acceptance criterion: on a clean machine
 with only Docker installed, `make up` must produce a healthy stack with no manual
 intervention. The other half -- a genuinely fresh VM -- has to be done by hand.
 """
@@ -13,8 +13,6 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-import time
-import urllib.request
 from pathlib import Path
 
 import pytest
@@ -61,28 +59,16 @@ def test_stack_comes_up_healthy_with_no_api_keys() -> None:
             health = service.get("Health", "")
             assert health in {"healthy", ""}, f"{service.get('Service')} is {health}"
 
-        # The dashboard answers, and reports the environment honestly.
-        deadline = time.time() + 120
-        payload = None
-        while time.time() < deadline:
-            try:
-                with urllib.request.urlopen(
-                    "http://127.0.0.1:8080/api/health", timeout=5
-                ) as response:
-                    payload = json.loads(response.read())
-                break
-            except OSError:
-                time.sleep(3)
-        assert payload is not None, "dashboard never became reachable"
-        assert payload["status"] in {"ok", "warn"}
-
         # `doctor` must succeed with no keys configured.
         doctor = _run("docker", "compose", "exec", "-T", "worker", "quantlab", "doctor")
         assert doctor.returncode == 0, doctor.stdout + doctor.stderr
 
-        # Unimplemented ingest must fail loudly rather than reporting success.
-        ingest = _run("docker", "compose", "exec", "-T", "worker", "quantlab", "data", "ingest")
-        assert ingest.returncode == 2
+        # The ingest plan must resolve with no keys configured. Dry run: nothing
+        # is fetched.
+        ingest = _run(
+            "docker", "compose", "exec", "-T", "worker", "quantlab", "data", "ingest", "--dry-run"
+        )
+        assert ingest.returncode == 0, ingest.stdout + ingest.stderr
     finally:
         _run("docker", "compose", "down", "--remove-orphans", timeout=300)
 
@@ -90,7 +76,7 @@ def test_stack_comes_up_healthy_with_no_api_keys() -> None:
 @requires_docker
 @pytest.mark.timeout(3600)
 def test_base_image_builds_for_both_architectures() -> None:
-    """Spec section 10: must build and run on linux/amd64 and linux/arm64."""
+    """Must build and run on linux/amd64 and linux/arm64."""
     result = _run(
         "docker",
         "buildx",

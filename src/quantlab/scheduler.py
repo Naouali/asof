@@ -1,4 +1,4 @@
-"""Cron-equivalent for daily ingest and paper-trading runs (spec section 10).
+"""Cron-equivalent for the recurring ingest jobs.
 
 APScheduler rather than a cron binary, for two reasons: it is multi-architecture by
 construction (no per-arch static binary to fetch), and jobs run in-process where

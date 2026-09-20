@@ -4,7 +4,7 @@ The only free source of **as-filed** US company fundamentals, and the reason the
 `fundamentals` dataset exists. Every other free fundamentals source serves
 restated history: today's view of what a company earned in 2015, silently revised
 by every subsequent correction. EDGAR serves what was filed, with the filing date
-attached, so a backtest can see 2015 through 2015's eyes.
+attached, so 2015 can be seen through 2015's eyes.
 
 No API key. The SEC's fair-access policy asks only for a User-Agent carrying real
 contact details and caps callers at 10 requests a second; both are enforced by
@@ -17,7 +17,7 @@ several windows for the same period end in the same filing. Apple's revenue fact
 carry 3-, 6-, 9- and 12-month spans -- the quarterly figure, two year-to-date
 cumulatives, and the annual total -- and a 10-K contains both the 12-month year
 and the 3-month fourth quarter. Loading them into one series keyed by period end
-mixes a quarter's revenue with a year's, and a profitability ratio built on the
+mixes a quarter's revenue with a year's, and any ratio built on the
 result divides whichever happened to be last into total assets. The span is
 therefore classified and written into ``fiscal_period``, which is part of the
 dataset's key, so the two can never collide.

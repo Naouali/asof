@@ -2,10 +2,10 @@
 
     snapshot = store.as_of(date)   # a view of ALL data knowable at `date`
 
-Every signal computation receives data through this object and through nothing
-else. The goal is not to make look-ahead bias *discouraged* -- it is to make it
-structurally unavailable, so that a tired analyst at 1am cannot write it by
-accident.
+Anything that asks "what was known on date D" reads through this object and
+through nothing else: the app's as-of control is a thin layer over it. The goal is
+not to make reading the future *discouraged* -- it is to make it structurally
+unavailable, so that a tired analyst at 1am cannot do it by accident.
 
 Four independent mechanisms enforce that:
 
@@ -18,7 +18,7 @@ Four independent mechanisms enforce that:
 3. **Post-condition checks.** Every frame leaving this module is re-inspected, and
    a single row with ``known_at`` after the snapshot instant raises. This is
    redundant with (1) on purpose: it converts a future filtering bug from a
-   flattering backtest into a crash.
+   quietly wrong answer into a crash.
 4. **A sandboxed SQL surface.** :meth:`Snapshot.sql` runs against a DuckDB
    connection built with ``enable_external_access=false``, holding only
    already-filtered tables. The lake files are unreachable from it, DuckDB refuses
@@ -52,8 +52,8 @@ log = get_logger("quantlab.data.pit")
 class LookAheadError(RuntimeError):
     """An attempt was made to see data that was not knowable at the as-of instant.
 
-    This is never a warning. A backtest that has seen the future is not slightly
-    wrong; it is unrelated to the strategy it claims to measure.
+    This is never a warning. A view of the past that has seen the future is not
+    slightly wrong; it describes a day that never existed.
     """
 
 
@@ -137,7 +137,7 @@ class Snapshot:
 
         Redundant with the query filter, and kept anyway. The filter is code that
         can acquire a bug; this check turns that bug into a crash instead of into
-        a Sharpe ratio.
+        a number somebody believes.
         """
         if frame.height == 0:
             return frame
@@ -155,7 +155,7 @@ class Snapshot:
                     f"point-in-time violation in {dataset}: {offenders.height} rows "
                     f"have {column} after the snapshot instant {self.as_of.isoformat()} "
                     f"(worst {worst.isoformat()}). The snapshot filter did not hold; "
-                    "this is a bug in QuantLab, not in your strategy."
+                    "this is a bug in QuantLab, not in your query."
                 )
         return frame
 
@@ -185,6 +185,20 @@ class Snapshot:
         it then, and absent from a 2024 one.
         """
         return self.frame("instruments", **kwargs)
+
+    def insider_transactions(self, **kwargs: Any) -> pl.DataFrame:
+        """Insider trades whose REPORT had been accepted by the as-of date. A trade
+        made last week and not yet reported is absent, as it was for everyone."""
+        return self.frame("insider_transactions", **kwargs)
+
+    def institutional_holdings(self, **kwargs: Any) -> pl.DataFrame:
+        """13F positions from filings accepted by the as-of date, so for six weeks
+        after a quarter ends this still shows the quarter before it."""
+        return self.frame("institutional_holdings", **kwargs)
+
+    def congress_trades(self, **kwargs: Any) -> pl.DataFrame:
+        """Congressional trades whose report had been filed by the as-of date."""
+        return self.frame("congress_trades", **kwargs)
 
     # ------------------------------------------------------------------- sql --
     def sql(

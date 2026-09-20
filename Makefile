@@ -1,14 +1,13 @@
 # QuantLab -- single entrypoint for every common task.
 #
 # Nothing here requires a Python toolchain on the host. Docker is the only
-# prerequisite (spec section 1: "no 'install these 14 system libraries first'").
+# prerequisite.
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help base build up down restart ps logs doctor init ingest ingest-daily \
-        backtest paper test lint format typecheck check shell notebook catalogue \
-        status fetchers capacity golden trials library bench signals \
-        dashboard lock clean clean-data verify-multiarch dev-image
+        test lint format typecheck check shell catalogue status fetchers \
+        ui ui-dev ui-check serve lock clean clean-data verify-multiarch dev-image
 
 COMPOSE      ?= docker compose
 BASE_IMAGE   ?= quantlab-base:local
@@ -56,8 +55,7 @@ up: build  ## Start the full stack and wait for every service to report healthy
 	@echo
 	@$(COMPOSE) ps
 	@echo
-	@echo "dashboard  http://127.0.0.1:$${QUANTLAB_DASHBOARD_PORT:-8080}"
-	@echo "jupyter    http://127.0.0.1:$${QUANTLAB_JUPYTER_PORT:-8888}"
+	@echo "app  http://127.0.0.1:$${QUANTLAB_WEB_PORT:-8080}   (no login; this machine only)"
 	@echo
 	@$(MAKE) --no-print-directory doctor
 
@@ -96,57 +94,29 @@ status:  ## Show what the lake holds and how stale it is
 fetchers:  ## List every fetcher and whether it can run right now
 	$(COMPOSE) exec -T worker quantlab data fetchers
 
-signals:  ## List the signal library, tiered by evidence
-	$(COMPOSE) exec -T worker quantlab signals list
-
-trials:  ## Show the trial registry -- what is deflating your Sharpe ratios
-	$(COMPOSE) exec -T worker quantlab validate trials
-
-library:  ## Empirical-Bayes shrinkage across every signal family
-	$(COMPOSE) exec -T worker quantlab validate library
-
-report:  ## Tearsheet for a run: make report CONFIG=configs/backtest_example.yaml
-	@test -n "$(CONFIG)" || { echo "usage: make report CONFIG=<path> [FORMAT=text|markdown|html]"; exit 2; }
-	$(COMPOSE) exec -T worker quantlab report --config $(CONFIG) --format $(or $(FORMAT),text)
-
-attribute:  ## Is it secretly just beta? make attribute SYMBOL=SPY
-	@test -n "$(SYMBOL)" || { echo "usage: make attribute SYMBOL=<ticker> [AS_OF=<date>]"; exit 2; }
-	$(COMPOSE) exec -T worker quantlab risk attribute -s $(SYMBOL) \
-		--as-of $(or $(AS_OF),$(shell date -u +%F))
-
-capacity:  ## Break-even AUM: make capacity ALPHA=25 TURNOVER=0.4
-	@test -n "$(ALPHA)" || { echo "usage: make capacity ALPHA=<bps/rebalance> TURNOVER=<fraction>"; exit 2; }
-	$(COMPOSE) exec -T worker quantlab costs capacity --alpha $(ALPHA) --turnover $(TURNOVER)
-
-backtest:  ## Run a backtest: make backtest CONFIG=configs/trend_futures.yaml
-	@test -n "$(CONFIG)" || { echo "usage: make backtest CONFIG=configs/<strategy>.yaml"; exit 2; }
-	$(COMPOSE) exec -T worker quantlab backtest --config $(CONFIG)
-
-paper:  ## Run one paper-trading cycle
-	$(COMPOSE) exec -T worker quantlab paper
-
 shell:  ## Open a shell in the worker container
 	$(COMPOSE) exec worker /bin/bash
 
-notebook:  ## Print the Jupyter URL
-	@echo "http://127.0.0.1:$${QUANTLAB_JUPYTER_PORT:-8888}/lab"
+# ----------------------------------------------------------------------------------
+# The web app, without Docker (needs Node and the Python environment on the host)
+# ----------------------------------------------------------------------------------
+ui:  ## Build the interface into ui/dist
+	cd ui && npm ci && npm run build
 
-serve:  ## Run the dashboard and research UI locally, without Docker
-	.venv/bin/quantlab dashboard --port $(or $(PORT),8080)
+serve: ## Serve the app on http://127.0.0.1:8080 (run `make ui` first)
+	.venv/bin/quantlab serve --port $(or $(PORT),8080)
 
-dashboard:  ## Print the dashboard URL
-	@echo "http://127.0.0.1:$${QUANTLAB_DASHBOARD_PORT:-8080}"
+ui-dev:  ## Interface with hot reload on :5173, proxying /api to `make serve`
+	cd ui && npm run dev
+
+ui-check:  ## Type-check and test the interface
+	cd ui && npm run typecheck && npm test
 
 # ----------------------------------------------------------------------------------
 # Quality
 # ----------------------------------------------------------------------------------
-test: dev-image  ## Run the test suite (excludes the slow benchmarks)
+test: dev-image  ## Run the test suite (excludes the Docker integration tests)
 	$(DEV_RUN) pytest
-
-bench: dev-image  ## Run the throughput benchmarks on their own
-	@echo "Measuring wall clock -- close other work first, or the number is the"
-	@echo "machine's memory pressure rather than the engine's speed."
-	$(DEV_RUN) pytest -m slow -v
 
 lint: dev-image  ## Lint
 	$(DEV_RUN) ruff check src tests scripts
@@ -162,16 +132,6 @@ typecheck: dev-image  ## Type-check
 	$(DEV_RUN) mypy
 
 check: lint typecheck test  ## Everything CI runs
-
-golden: dev-image  ## Regenerate the backtest golden fixture (do this deliberately)
-	@echo "This changes what the regression test considers correct."
-	@echo "Only regenerate when the engine's arithmetic SHOULD have changed,"
-	@echo "and say why in the commit message."
-	@read -r -p "Type 'regenerate' to confirm: " reply; \
-	  if [ "$$reply" = "regenerate" ]; then \
-	    docker run --rm -t -v "$(PWD):/w" -w /w $(DEV_IMAGE) \
-	      python scripts/gen_backtest_golden.py; \
-	  else echo "aborted"; fi
 
 lock: ## Re-resolve dependencies and rewrite uv.lock (run after editing pyproject.toml)
 	docker run --rm -v "$(PWD):/w" -w /w ghcr.io/astral-sh/uv:0.5.14 uv lock
@@ -194,8 +154,8 @@ clean-data:  ## Wipe the data lake. Irreversible; asks first.
 	@read -r -p "Type 'delete' to confirm: " reply; \
 	  if [ "$$reply" = "delete" ]; then \
 	    $(COMPOSE) down --remove-orphans; \
-	    docker volume rm quantlab-data quantlab-pgdata || true; \
-	    echo "data volumes removed"; \
+	    docker volume rm quantlab-data || true; \
+	    echo "data volume removed"; \
 	  else \
 	    echo "aborted; nothing was deleted"; \
 	  fi
