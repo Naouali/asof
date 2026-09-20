@@ -130,9 +130,27 @@
   <p class="note">Every number this platform produces inherits the caveats above. Tearsheets
      render the caveats of the sources that fed them; do not read an equity curve without them.</p>
 
-  <h2>Not yet built</h2>
+  <h2>Paper books</h2>
   <div class="card">
-    <div class="row"><span class="detail">Paper-trading P&amp;L, strategy comparison and the signal
-      decay monitor land in Milestone 11. This page shows only what is real today.</span></div>
+    {% for b in paper %}
+    <div class="row">
+      <span class="pill {{ 'ok' if b.stale_days < 4 else 'warn' }}">
+        {{ '%.1f'|format(b.stale_days) }}d old
+      </span>
+      <span class="name">{{ b.strategy }}</span>
+      <span class="detail">
+        ${{ '{:,.0f}'.format(b.equity) }} &middot;
+        {{ '%.2f'|format(b.gross_exposure) }}x gross &middot;
+        {{ b.positions }} positions &middot;
+        {{ b.cycles }} cycles
+      </span>
+    </div>
+    {% else %}
+    <div class="row"><span class="detail">No paper books yet &mdash;
+      <code>quantlab paper run --signal &lt;name&gt; --as-of &lt;date&gt;</code>.</span></div>
+    {% endfor %}
+    <div class="row"><span class="hint">Age is shown because a loop that silently
+      stopped running looks exactly like one holding steady. Nothing here is routed
+      to a venue.</span></div>
   </div>
 </div>

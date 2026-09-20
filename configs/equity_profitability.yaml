@@ -1,0 +1,32 @@
+# Gross profitability on the EDGAR fundamentals universe.
+#
+# Fifteen large US filers -- far too few for a cross-sectional equity strategy,
+# and the sample is what free as-filed fundamentals cost in ingest time rather
+# than a considered universe. Read the result as a test that the pipeline works
+# end to end, not as evidence about profitability as a factor.
+name: equity-profitability-gross
+as_of: "2026-09-18"
+start: "2012-01-01"
+dataset: ohlcv_daily
+source: yahoo
+
+symbols: [AAPL, MSFT, JNJ, KO, PG, XOM, JPM, PFE, WMT, HD, CVX, MRK, PEP, CSCO, INTC]
+
+weights: ../data/runs/profitability_weights.parquet
+
+spread_bps: 2.0
+liquidity_window: 63
+
+engine:
+  initial_equity: 10_000_000
+  execution: next_open
+  max_staleness_bars: 5
+  delisting_return: -0.30
+  borrow_bps_annual: 180      # 15 bp/month, the platform's punitive default
+  financing_bps_annual: 550
+  commission_bps: 0.5
+
+impact:
+  y: 0.5
+  delta: 0.5
+  permanent_fraction: 0.5

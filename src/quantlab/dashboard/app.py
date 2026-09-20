@@ -175,6 +175,7 @@ def create_app() -> FastAPI:
             context={
                 "version": __version__,
                 "checks": checks,
+                "paper": _paper_books(),
                 "sources": source_availability(),
                 "heartbeats": _heartbeats(),
                 "lake": _lake(),

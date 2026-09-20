@@ -45,14 +45,20 @@ jobs:
       Daily bars. Survivorship-biased (delisted tickers vanish) and retroactively
       split-adjusted, so use returns, not price levels. See docs/LIMITATIONS.md.
     start: "2005-01-01"
-    symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ]
+    symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ,
+              # The EDGAR fundamentals universe, so equity.profitability has
+              # something to trade rather than only something to score.
+              AAPL, MSFT, JNJ, KO, PG, XOM, JPM, PFE, WMT, HD, CVX, MRK, PEP, CSCO, INTC]
 
   - fetcher: yahoo.corporate_actions
     description: >-
       Dividends and splits with their own ex-dates -- the honest route to total
       returns, since Yahoo's adj_close is restated under you.
     start: "2005-01-01"
-    symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ]
+    symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ,
+              # The EDGAR fundamentals universe, so equity.profitability has
+              # something to trade rather than only something to score.
+              AAPL, MSFT, JNJ, KO, PG, XOM, JPM, PFE, WMT, HD, CVX, MRK, PEP, CSCO, INTC]
 
   - fetcher: stooq.ohlcv_daily
     description: >-
