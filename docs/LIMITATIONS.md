@@ -199,7 +199,27 @@ There is no order routing, by design. The gap between a paper-trading loop and l
 execution — queue position, partial fills at your actual broker, borrow
 availability on the day, operational failure — is large and is not simulated here.
 
-## 7. What the vectorised engine does not model
+## 7. Most of the Tier 1 signal set cannot run on free data
+
+Six Tier 1 signals are implemented. **Two of them can actually run.**
+
+| Signal | Blocked by |
+| --- | --- |
+| `carry.rates` | Needs a free FRED key, which is a five-minute fix. |
+| `equity.profitability` | Needs as-filed fundamentals — SEC EDGAR, Milestone 9. |
+| `carry.commodity_basis` | Needs a second point on the futures curve, which free data does not supply at all. |
+| `carry.fx` | Needs a policy rate per currency; the free catalogue covers two. |
+
+Each refuses to run and says which. None returns an empty cross-section, because
+an empty cross-section looks exactly like a signal with no view and a strategy
+built on one trades nothing while appearing to work.
+
+The consequence for the platform as a whole: **cross-asset diversification, which
+is what makes trend following and carry work, is largely unavailable.** Trend on
+fourteen correlated ETFs is one bet, and the 0.14 net Sharpe it produces reflects
+that rather than reflecting the effect.
+
+## 8. What the vectorised engine does not model
 
 It is a *research* engine. It answers "was there an edge here, net of costs", and
 it deliberately does not answer "could this have been executed":
@@ -218,7 +238,7 @@ it deliberately does not answer "could this have been executed":
 - **Cash earns nothing and there is no margin call.** A strategy that would have
   been liquidated by its broker runs to the end here.
 
-## 8. Capacity is a ceiling, not a plan
+## 9. Capacity is a ceiling, not a plan
 
 The break-even AUM assumes the impact model is right, the ADV forecast is right,
 and that trading is spread across the universe in proportion to weights. All three
@@ -233,7 +253,7 @@ degrade in the direction of *less* capacity:
 - Crowding is not modelled at all. If others hold the same position, your exit is
   correlated with theirs and impact is worse than any single-trader model says.
 
-## 9. The point-in-time guarantee has a hard edge
+## 10. The point-in-time guarantee has a hard edge
 
 `Snapshot` makes look-ahead bias structurally unavailable **for data that is in the
 lake**. It cannot help with the two harder cases:
@@ -247,7 +267,7 @@ lake**. It cannot help with the two harder cases:
   ETFs that still exist in 2026 is a survivorship-biased universe no matter how
   correct the timestamps are.
 
-## 10. What "reproducible" means here
+## 11. What "reproducible" means here
 
 A given commit plus a given *data snapshot* produces identical results. It does not
 mean re-running ingest reproduces the snapshot: Yahoo restates adjusted closes,

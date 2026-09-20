@@ -63,6 +63,16 @@ jobs:
     enabled: false
     symbols: [aapl.us, msft.us]
 
+  # --------------------------------------------------------- academic factors --
+  - fetcher: ken_french.series_observations
+    description: >-
+      Daily Fama-French factors and momentum. The accepted benchmark for any
+      equity factor built here: survivorship-bias-free, decades of history, free.
+      Restated on every release, so these are a benchmark and a risk-model input,
+      never a point-in-time signal input -- every row records vintage=false.
+    start: "1990-01-01"
+    symbols: [KF_MKT_RF, KF_SMB, KF_HML, KF_RF, KF_MOM]
+
   # ----------------------------------------------------------- macro / rates --
   # Both need a free FRED key. Without one these jobs are reported as skipped and
   # the rest of the plan still runs.

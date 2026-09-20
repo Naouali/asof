@@ -115,6 +115,23 @@ a breach stopping the run.
 
 A 30-year, 3,000-name backtest with full costs runs in about 7 seconds.
 
+## The signal library
+
+```bash
+quantlab signals list                    # tiered by evidence, not by interest
+quantlab signals show carry.fx           # reference, and how it is known to fail
+quantlab signals run trend.time_series_momentum --as-of 2026-09-18
+```
+
+Every signal declares its datasets, cadence, expected turnover, academic reference
+and **how it is known to fail** — the last is validated, on the grounds that if you
+cannot name how a signal goes wrong you do not understand it well enough to trade
+it. Signals return scores, never weights; portfolio construction owns those.
+
+Signals whose data the free catalogue cannot supply are implemented and **refuse to
+run**, naming what is missing. An empty cross-section looks exactly like a signal
+with no view.
+
 ## Validating a result
 
 Every backtest records itself as a trial, and the count deflates the Sharpe it
@@ -165,9 +182,10 @@ layer — parquet lake, point-in-time snapshots, trading calendars and eight fet
 across Yahoo, Binance and FRED/ALFRED; the cost models — square-root impact,
 Almgren-Chriss scheduling, spread estimation with its bias problem documented,
 financing and borrow, and the capacity calculator; the vectorised backtest engine
-with its accounting identities enforced every bar; and the validation module —
-purged cross-validation, deflated Sharpe with an automatic trial counter, PBO,
-empirical-Bayes shrinkage, and a red-team suite of deliberately broken strategies.
+with its accounting identities enforced every bar; the validation module — purged
+cross-validation, deflated Sharpe with an automatic trial counter, PBO,
+empirical-Bayes shrinkage, and a red-team suite of deliberately broken strategies;
+and the Tier 1 signal library with its Ken French benchmark.
 
 Commands whose implementation lands in a later milestone exit non-zero naming that
 milestone, rather than returning an empty result that could be mistaken for a

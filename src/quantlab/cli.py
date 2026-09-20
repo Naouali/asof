@@ -44,6 +44,7 @@ data_app = typer.Typer(name="data", help="Data lake and catalogue.", no_args_is_
 costs_app = typer.Typer(
     name="costs", help="Transaction costs, impact and capacity.", no_args_is_help=True
 )
+signals_app = typer.Typer(name="signals", help="The signal library.", no_args_is_help=True)
 validate_app = typer.Typer(
     name="validate", help="Overfitting statistics and the trial registry.", no_args_is_help=True
 )
@@ -51,6 +52,7 @@ app.add_typer(worker_app)
 app.add_typer(scheduler_app)
 app.add_typer(data_app)
 app.add_typer(costs_app)
+app.add_typer(signals_app)
 app.add_typer(validate_app)
 
 console = Console()
@@ -725,6 +727,131 @@ def validate_sharpe(
             "found the luckiest member of the search."
         )
         raise typer.Exit(code=1)
+
+
+@signals_app.command("list")
+def signals_list(
+    tier: Annotated[int | None, typer.Option("--tier", help="Show one tier only.")] = None,
+) -> None:
+    """The signal library, ordered by evidence quality.
+
+    Tiering is by how well the effect is supported, not by how interesting it is.
+    Tier 3 signals are implemented so a decayed effect can be re-tested on current
+    data -- with the evidence that it decayed attached.
+    """
+    from quantlab.signals import SIGNAL_REGISTRY
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    for column in ("tier", "signal", "asset class", "evidence", "output", "turnover"):
+        table.add_column(column, justify="right" if column in {"tier", "turnover"} else "left")
+
+    colour = {"strong": "green", "mixed": "yellow", "decayed": "red"}
+    for name, cls in sorted(SIGNAL_REGISTRY.items(), key=lambda kv: (kv[1].spec.tier, kv[0])):
+        spec = cls.spec
+        if tier is not None and spec.tier != tier:
+            continue
+        table.add_row(
+            str(spec.tier),
+            name,
+            spec.asset_class.value,
+            f"[{colour[spec.evidence.value]}]{spec.evidence.value}[/]",
+            spec.output.value.replace("_", " "),
+            f"{spec.expected_turnover_annual:.0%}",
+        )
+    console.print(table)
+    console.print(
+        "[dim]`quantlab signals show <name>` for the reference and the failure "
+        "modes. Every signal declares how it is known to go wrong.[/dim]"
+    )
+
+
+@signals_app.command("show")
+def signals_show(
+    name: Annotated[str, typer.Argument(help="Signal name, as `signals list` prints it.")],
+) -> None:
+    """Everything a reader of this signal's Sharpe ratio should know about it."""
+    from quantlab.signals import get_signal
+
+    try:
+        spec = get_signal(name).spec
+    except KeyError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+
+    console.print(f"[bold]{spec.name}[/bold]  (tier {spec.tier}, {spec.evidence.value} evidence)")
+    console.print(f"  asset class   {spec.asset_class.value}")
+    console.print(f"  output        {spec.output.value.replace('_', ' ')}")
+    console.print(f"  datasets      {', '.join(spec.required_datasets)}")
+    console.print(
+        f"  rebalance     {spec.rebalance.value}, ~{spec.expected_turnover_annual:.0%} "
+        "turnover a year"
+    )
+    console.print(f"  warm-up       {spec.warmup_days} bars")
+    console.print(f"\n  [bold]reference[/bold]\n   {spec.reference}")
+    console.print(f"\n  [bold]known failure modes[/bold]\n   {spec.known_failure_modes}")
+    if spec.notes:
+        console.print(f"\n  [dim]{spec.notes}[/dim]")
+    if spec.evidence.value == "decayed":
+        console.print(
+            "\n[red]This effect has decayed since publication.[/red] It is implemented "
+            "so it can be re-tested on current data, not because it is expected to work."
+        )
+
+
+@signals_app.command("run")
+def signals_run(
+    name: Annotated[str, typer.Argument(help="Signal to compute.")],
+    as_of: Annotated[str, typer.Option("--as-of", help="Point-in-time date.")],
+    symbols: Annotated[
+        list[str] | None, typer.Option("--symbol", "-s", help="Instrument. Repeatable.")
+    ] = None,
+) -> None:
+    """Compute a signal's current scores, through a point-in-time snapshot."""
+    from quantlab.data.store import Store
+    from quantlab.signals import get_signal
+    from quantlab.signals.base import SignalUnavailableError
+
+    try:
+        signal_class = get_signal(name)
+    except KeyError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+
+    store = Store(get_settings().layout)
+    snapshot = store.as_of(as_of)
+    universe = symbols or list(store.symbols(signal_class.spec.required_datasets[0]))
+    if not universe:
+        err_console.print(
+            "[red]no instruments[/red] -- pass --symbol, or ingest the datasets this "
+            f"signal needs: {', '.join(signal_class.spec.required_datasets)}"
+        )
+        raise typer.Exit(code=2)
+
+    try:
+        scores = signal_class().compute(snapshot, universe)
+    except SignalUnavailableError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if scores.height == 0:
+        console.print(
+            f"[yellow]no scores at {as_of}[/yellow] -- every instrument is inside the "
+            f"{signal_class.spec.warmup_days}-bar warm-up window, or has no data."
+        )
+        return
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("symbol")
+    table.add_column("score", justify="right")
+    for row in scores.sort("score", descending=True).iter_rows(named=True):
+        colour = "green" if row["score"] > 0 else "red"
+        table.add_row(row["symbol"], f"[{colour}]{row['score']:+.4f}[/]")
+    console.print(table)
+    console.print(
+        f"[dim]{signal_class.spec.output.value.replace('_', ' ')}; point-in-time as of "
+        f"{snapshot.as_of:%Y-%m-%d}. Scores are not weights -- portfolio construction "
+        "owns those.[/dim]"
+    )
 
 
 @app.command()

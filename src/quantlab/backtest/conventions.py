@@ -24,8 +24,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from quantlab.conventions import RebalanceFrequency
 from quantlab.logging import get_logger
 
+# RebalanceFrequency is re-exported for callers that already import it from here;
+# it lives in quantlab.conventions because signals and portfolio construction
+# need it too, and neither may import upward into the engine.
 __all__ = [
     "DEFAULT_DELISTING_RETURN",
     "ExecutionTiming",
@@ -65,30 +69,6 @@ class ExecutionTiming(str, Enum):
     Selecting it requires ``acknowledge_look_ahead=True`` and stamps the result as
     contaminated, so a number produced this way can never be mistaken for one that
     was not."""
-
-
-class RebalanceFrequency(str, Enum):
-    """How often target weights are refreshed.
-
-    Between rebalances, *shares* are held constant and weights drift with returns.
-    Holding weights constant instead would imply trading every single day to
-    maintain them -- free in a backtest, expensive in reality, and the difference
-    is exactly the turnover this platform exists to charge for.
-    """
-
-    DAILY = "daily"
-    WEEKLY = "weekly"
-    MONTHLY = "monthly"
-    QUARTERLY = "quarterly"
-
-    @property
-    def approximate_per_year(self) -> float:
-        return {
-            RebalanceFrequency.DAILY: 252.0,
-            RebalanceFrequency.WEEKLY: 52.0,
-            RebalanceFrequency.MONTHLY: 12.0,
-            RebalanceFrequency.QUARTERLY: 4.0,
-        }[self]
 
 
 @dataclass(frozen=True, slots=True)

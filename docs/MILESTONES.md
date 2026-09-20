@@ -10,7 +10,7 @@ and committed.
 | 3 | Cost models: square-root impact, spread, financing, capacity calculator | **complete** |
 | 4 | Vectorised backtest engine with enforced accounting identities | **complete** |
 | 5 | Validation: CPCV, DSR with automatic trial counting, PBO, empirical-Bayes shrinkage | **complete** |
-| 6 | Tier 1 signals: time-series momentum, cross-asset carry, equity profitability | not started |
+| 6 | Tier 1 signals: time-series momentum, cross-asset carry, equity profitability | **complete** |
 | 7 | Portfolio construction: vol targeting, risk parity, turnover-aware optimisation, factor risk model | not started |
 | 8 | Reporting: tearsheets with capacity and validation statistics | not started |
 | 9 | Remaining data sources: SEC EDGAR, CFTC COT, EIA, academic factors, options collector | not started |
@@ -215,6 +215,51 @@ them: `minimum_backtest_length` was mixing per-observation and annualised Sharpe
 units (understating the requirement by a factor of 252), and the CPCV path
 reassembly double-counted observations when a split spanned groups belonging to
 different paths.
+
+## Milestone 6 — what was delivered
+
+**The signal contract.** Every signal declares its datasets, cadence, expected
+turnover, academic reference and — unusually — **how it is known to fail**. The
+failure-modes field is validated: a terse one is a construction error, on the
+grounds that if you cannot name how a signal goes wrong you do not understand it
+well enough to trade it.
+
+**Six signals**, tiered by evidence rather than interest:
+
+| Signal | Tier | State |
+| --- | --- | --- |
+| `trend.time_series_momentum` | 1 | Runs. Blended 1/3/12-month, volatility-scaled per instrument. |
+| `carry.crypto_perp_funding` | 1 | Runs. Funding modelled as the cash flow it is. |
+| `carry.rates` | 1 | Implemented; needs a free FRED key. |
+| `carry.commodity_basis` | 1 | Implemented; free data supplies no second contract (spec 3.4). |
+| `equity.profitability` | 1 | Implemented; needs SEC EDGAR (Milestone 9). |
+| `carry.fx` | 3 | Implemented and marked **decayed**, so it can be re-tested with the prior attached. |
+
+**Ken French fetcher**, pulled forward from Milestone 9 because this milestone's
+acceptance criterion is a benchmark and a benchmark you cannot run is not one.
+46,060 daily factor observations back to 1990.
+
+**The benchmark, honestly scoped.** Spec section 3.3 asks for >0.9 correlation with
+UMD. That threshold applies to a comparable universe; an ETF factor against a
+three-thousand-stock factor is a different portfolio, not a noisy version of one.
+`Comparability` makes the distinction explicit. Measured: **+0.539** over 4,904
+overlapping days — right sign, right magnitude, and the real test waits on a stock
+universe.
+
+**Results, end to end on real ingested data.** Both Tier 1 signals that can run
+were taken through the full pipeline — snapshot, signal, weights, costs, ledger,
+deflation:
+
+- Trend on 14 ETFs: 0.22 gross Sharpe, **0.14 net**, deflated 0.738 — does not
+  survive. The spec predicts this: *"on a handful of correlated markets it is one
+  bet."*
+- Crypto carry on 8 majors: 0.34 gross, **0.15 net**, deflated 0.647 — does not
+  survive. 768 bp/yr of cost drag, dominated by impact at weekly turnover.
+
+Neither is a finding. Both are the platform working.
+
+**Tests** — 93 in the signal suite. A layering violation was caught by the
+import-graph test and fixed by moving `RebalanceFrequency` out of the engine.
 
 ## Not yet verified
 

@@ -254,6 +254,26 @@ DATASETS: dict[str, DatasetSchema] = {
         key=("symbol", "action"),
         required=("action",),
     ),
+    "fundamentals": DatasetSchema(
+        name="fundamentals",
+        description=(
+            "Point-in-time company fundamentals, one row per (symbol, metric, "
+            "period). `as_of` is the period END and `known_at` is the FILED date -- "
+            "the distinction is the whole value of SEC EDGAR over every restated "
+            "free source. A restatement arrives as a new row with a later known_at, "
+            "and the superseded value stays visible to earlier snapshots, which is "
+            "what makes a fundamentals backtest honest."
+        ),
+        columns={
+            "metric": pl.Utf8(),
+            "value": pl.Float64(),
+            "unit": pl.Utf8(),
+            "fiscal_period": pl.Utf8(),
+            "form": pl.Utf8(),
+        },
+        key=("symbol", "metric", "fiscal_period"),
+        required=("metric",),
+    ),
     "instruments": DatasetSchema(
         name="instruments",
         description=(

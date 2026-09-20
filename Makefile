@@ -7,7 +7,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help base build up down restart ps logs doctor init ingest ingest-daily \
         backtest paper test lint format typecheck check shell notebook catalogue \
-        status fetchers capacity golden trials library bench \
+        status fetchers capacity golden trials library bench signals \
         dashboard lock clean clean-data verify-multiarch dev-image
 
 COMPOSE      ?= docker compose
@@ -95,6 +95,9 @@ status:  ## Show what the lake holds and how stale it is
 
 fetchers:  ## List every fetcher and whether it can run right now
 	$(COMPOSE) exec -T worker quantlab data fetchers
+
+signals:  ## List the signal library, tiered by evidence
+	$(COMPOSE) exec -T worker quantlab signals list
 
 trials:  ## Show the trial registry -- what is deflating your Sharpe ratios
 	$(COMPOSE) exec -T worker quantlab validate trials
