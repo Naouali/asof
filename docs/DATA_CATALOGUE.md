@@ -63,12 +63,12 @@ into the data-quality warnings panel of every tearsheet.
 | [`open_bond_asset_pricing`](#open-bond-asset-pricing) | credit, factors | `restated` | none | 2 |
 | [`options_snapshot`](#options-snapshot) | options | `as_published` | none | 3 |
 | [`sec_edgar`](#sec-edgar) | equity, reference | `vintage` | none | 5 |
-| [`stooq`](#stooq) | equity, futures, fx | `survivorship_biased` | none | 3 |
+| [`stooq`](#stooq) | equity, futures, fx | `survivorship_biased` | none | 4 |
 | [`tiingo`](#tiingo) | equity, crypto | `restated` | `tiingo_api_key` | 1 |
 | [`treasury_fiscaldata`](#treasury-fiscaldata) | rates, macro | `as_published` | none | 2 |
 | [`usda_nass`](#usda-nass) | commodity | `restated` | `usda_nass_api_key` | 2 |
+| [`yahoo`](#yahoo) | equity, futures, fx, options | `survivorship_biased` | none | 5 |
 | [`yahoo_futures`](#yahoo-futures) | futures, commodity | `as_published` | none | 3 |
-| [`yfinance`](#yfinance) | equity, futures, fx, options | `survivorship_biased` | none | 4 |
 
 
 ## macro
@@ -284,7 +284,8 @@ into the data-quality warnings panel of every tearsheet.
 
 **Caveats**
 
-- ADJUSTMENT METHODOLOGY IS UNDOCUMENTED. Whether dividends are reinvested, and on what date, is unstated. Cross-check against yfinance adjusted closes before trusting total returns.
+- BLOCKED AS OF 2026-09-20: the CSV endpoint serves a JavaScript proof-of-work anti-bot interstitial rather than data. QuantLab does not solve anti-bot challenges, so this source fails loudly and the independent cross-check on Yahoo's adjustments is unavailable.
+- ADJUSTMENT METHODOLOGY IS UNDOCUMENTED. Whether dividends are reinvested, and on what date, is unstated. Cross-check against Yahoo adjusted closes before trusting total returns.
 - Delisted tickers are not reliably retained -- survivorship bias.
 - No volume for some non-US venues, which breaks the ADV input to the impact model and therefore the capacity estimate.
 
@@ -312,9 +313,9 @@ into the data-quality warnings panel of every tearsheet.
 
 - Free tier limits preclude universe-wide ingest; cross-check only.
 
-### yfinance
+### yahoo
 
-**Yahoo Finance (via yfinance)** — <https://github.com/ranaroussi/yfinance>
+**Yahoo Finance (public chart API)** — <https://query1.finance.yahoo.com/v8/finance/chart/>
 
 | Field | Value |
 | --- | --- |
@@ -323,16 +324,17 @@ into the data-quality warnings panel of every tearsheet.
 | Point-in-time | `survivorship_biased` |
 | Update frequency | daily / intraday |
 | Reliability | unofficial |
-| Rate limit | unofficial; aggressive use gets rate-limited or blocked |
+| Rate limit | unpublished; aggressive use gets rate-limited or blocked |
 | Ingest throttle | 1.0 req/s |
 | Licence | Yahoo ToS prohibit redistribution; personal research use only |
 | API key | not required |
 
 **Caveats**
 
-- UNOFFICIAL SCRAPER. Yahoo changes its endpoints without notice and the library breaks periodically. Never the ground truth for a production number.
+- UNOFFICIAL API. Yahoo publishes no contract for this endpoint and changes it without notice. Never the ground truth for a production number.
 - SEVERELY SURVIVORSHIP-BIASED: delisted tickers disappear entirely. A universe built from what Yahoo returns today is a universe of winners.
-- Adjusted closes are silently restated when Yahoo reprocesses corporate actions, so a backtest re-run months later can produce different numbers. This is why ingested prices are snapshotted, not re-fetched.
+- PRICES ARE RETROACTIVELY SPLIT-ADJUSTED, and not only by splits that had already happened. A May 2014 Apple close is served today divided by 28: the 7:1 split that June AND the 4:1 split six years later. Returns are unaffected, but every price-LEVEL signal -- penny-stock filters, nominal price momentum, round-number effects -- is wrong, and nothing raises.
+- adj_close is Yahoo's own dividend adjustment, computed by an undocumented method and recomputed whenever Yahoo reprocesses a corporate action. Its known_at is therefore a fiction. Build total returns from close plus the corporate_actions dataset, whose dividends carry their own ex-dates.
 - Intraday history is capped (roughly 60 days at 1m), so intraday equity research cannot be backfilled.
 
 > Treat as convenience and cross-check, not ground truth (spec 3.2).
@@ -664,7 +666,7 @@ into the data-quality warnings panel of every tearsheet.
 
 ### options_snapshot
 
-**Self-collected options chain snapshots (via yfinance)** — <https://github.com/ranaroussi/yfinance>
+**Self-collected options chain snapshots (Yahoo chart API)** — <https://query1.finance.yahoo.com/v8/finance/chart/>
 
 | Field | Value |
 | --- | --- |

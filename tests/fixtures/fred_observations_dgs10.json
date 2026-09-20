@@ -1,0 +1,17 @@
+{
+  "_comment": "HAND-CONSTRUCTED from the documented FRED response shape. No free FRED key was available when Milestone 2 was built, so this fixture was not recorded from the live API. The shape is taken from https://fred.stlouisfed.org/docs/api/fred/series_observations.html and the '.' missing-value encoding is real FRED behaviour. Re-record against the live API once a key is configured.",
+  "realtime_start": "2026-09-20",
+  "realtime_end": "2026-09-20",
+  "observation_start": "2024-01-01",
+  "observation_end": "2024-01-08",
+  "units": "lin",
+  "count": 6,
+  "observations": [
+    {"realtime_start": "2026-09-20", "realtime_end": "2026-09-20", "date": "2024-01-01", "value": "."},
+    {"realtime_start": "2026-09-20", "realtime_end": "2026-09-20", "date": "2024-01-02", "value": "3.95"},
+    {"realtime_start": "2026-09-20", "realtime_end": "2026-09-20", "date": "2024-01-03", "value": "3.91"},
+    {"realtime_start": "2026-09-20", "realtime_end": "2026-09-20", "date": "2024-01-04", "value": "3.99"},
+    {"realtime_start": "2026-09-20", "realtime_end": "2026-09-20", "date": "2024-01-05", "value": "4.05"},
+    {"realtime_start": "2026-09-20", "realtime_end": "2026-09-20", "date": "2024-01-08", "value": "4.00"}
+  ]
+}

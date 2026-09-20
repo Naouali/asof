@@ -174,16 +174,184 @@ def data_catalogue(
 
 @data_app.command("ingest")
 def data_ingest(
+    config: Annotated[Path | None, typer.Option("--config", "-c", help="Ingest plan YAML.")] = None,
+    fetcher: Annotated[
+        list[str] | None,
+        typer.Option("--fetcher", "-f", help="Run only these fetchers. Repeatable."),
+    ] = None,
     incremental: Annotated[
         bool,
-        typer.Option("--incremental", help="Update since the last cursor instead of a full pull."),
+        typer.Option(
+            "--incremental",
+            help="Resume from what the lake already holds, minus each job's overlap window.",
+        ),
+    ] = False,
+    end: Annotated[
+        str | None, typer.Option("--end", help="Ingest up to this ISO date (default: today).")
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Show the windows that would be fetched.")
     ] = False,
 ) -> None:
-    """Pull data into the lake."""
-    mode = "incremental" if incremental else "full"
-    _not_yet(
-        f"data ingest ({mode})", 2, "the data layer -- store, PIT machinery, FRED/Stooq/Binance"
+    """Pull data into the lake.
+
+    Exits non-zero if any job failed. Jobs skipped for a missing API key are not
+    failures -- the platform is required to run with none -- but they are listed.
+    """
+    import datetime as date_module
+
+    from quantlab.data.ingest import load_plan, run_plan
+
+    settings = get_settings()
+    path = config or (settings.layout.configs / "ingest.yaml")
+    if not path.exists():
+        err_console.print(f"[red]no ingest plan at {path}[/red]")
+        raise typer.Exit(code=2)
+
+    plan = load_plan(path).select(fetcher)
+    result = run_plan(
+        plan,
+        settings=settings,
+        incremental=incremental,
+        end=date_module.date.fromisoformat(end) if end else None,
+        dry_run=dry_run,
     )
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("fetcher")
+    table.add_column("rows", justify="right")
+    table.add_column("window")
+    table.add_column("secs", justify="right")
+    table.add_column("status", overflow="fold")
+    for job in result.jobs:
+        if not job.ok:
+            status = f"[red]failed[/red] {job.error}"
+        elif job.skipped_reason:
+            status = f"[yellow]skipped[/yellow] {job.skipped_reason}"
+        else:
+            status = "[green]ok[/green]"
+        table.add_row(
+            job.fetcher,
+            f"{job.rows:,}",
+            f"{job.start.date()} → {job.end.date()}",
+            f"{job.seconds:.1f}",
+            status,
+        )
+    console.print(table)
+    console.print(
+        f"\n[bold]{result.rows:,}[/bold] rows from {len(result.jobs)} jobs "
+        f"in {(result.finished_at - result.started_at).total_seconds():.1f}s"
+    )
+
+    if result.failures:
+        err_console.print(
+            f"[red]{len(result.failures)} job(s) failed.[/red] Nothing was substituted "
+            "for the missing data; fix the cause and re-run."
+        )
+        raise typer.Exit(code=1)
+
+
+@data_app.command("status")
+def data_status() -> None:
+    """Show what the lake holds and how stale it is."""
+    from quantlab.data.store import Store
+
+    stats = Store(get_settings().layout).stats()
+    if not stats:
+        console.print("[yellow]the lake is empty[/yellow] -- run `quantlab data ingest`")
+        return
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    for column in ("source", "dataset", "rows", "symbols", "span", "newest", "age", "size"):
+        table.add_column(
+            column, justify="right" if column in {"rows", "symbols", "size"} else "left"
+        )
+    for stat in stats:
+        age = stat.staleness
+        if age is None:
+            age_text = "-"
+        else:
+            days = age.total_seconds() / 86400
+            colour = "green" if days < 3 else "yellow" if days < 14 else "red"
+            age_text = f"[{colour}]{days:.1f}d[/{colour}]"
+        span = (
+            f"{stat.first_as_of:%Y-%m-%d} → {stat.last_as_of:%Y-%m-%d}"
+            if stat.first_as_of and stat.last_as_of
+            else "-"
+        )
+        table.add_row(
+            stat.source,
+            stat.dataset,
+            f"{stat.rows:,}",
+            f"{stat.symbols:,}",
+            span,
+            f"{stat.last_known_at:%Y-%m-%d}" if stat.last_known_at else "-",
+            age_text,
+            f"{stat.bytes / 1e6:.1f} MB",
+        )
+    console.print(table)
+    console.print(
+        "[dim]`age` is time since the newest observation became knowable, not since "
+        "we downloaded it.[/dim]"
+    )
+
+
+@data_app.command("fetchers")
+def data_fetchers() -> None:
+    """List every registered fetcher and whether it can run right now."""
+    from quantlab.data.ingest import iter_fetchers
+
+    settings = get_settings()
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    for column in ("fetcher", "dataset", "asset class", "point-in-time", "status"):
+        table.add_column(column)
+    for name, cls in iter_fetchers():
+        available, reason = cls(settings=settings).availability()
+        table.add_row(
+            name,
+            cls.dataset,
+            cls.asset_class.value,
+            cls.spec.pit_quality.value,
+            "[green]ready[/green]" if available else f"[yellow]{reason}[/yellow]",
+        )
+    console.print(table)
+
+
+@data_app.command("query")
+def data_query(
+    sql: Annotated[str, typer.Argument(help="SQL over the lake.")],
+    as_of: Annotated[
+        str | None,
+        typer.Option(
+            "--as-of", help="Run point-in-time: only data knowable at this date is visible."
+        ),
+    ] = None,
+    dataset: Annotated[
+        list[str] | None,
+        typer.Option("--dataset", "-d", help="Datasets the query reads (required with --as-of)."),
+    ] = None,
+) -> None:
+    """Query the lake.
+
+    Without --as-of this sees everything, including rows that were not knowable on
+    any given date. That is fine for inspection and wrong for research: pass
+    --as-of to run inside the point-in-time sandbox.
+    """
+    from quantlab.data.store import Store
+
+    store = Store(get_settings().layout)
+    if as_of is None:
+        console.print(store.sql(sql))
+        console.print("[dim]not point-in-time -- pass --as-of for research queries[/dim]")
+        return
+
+    if not dataset:
+        err_console.print(
+            "[red]--as-of requires --dataset[/red]: the point-in-time sandbox holds "
+            "nothing by default, so it must be told which datasets to materialise."
+        )
+        raise typer.Exit(code=2)
+    console.print(store.as_of(as_of).sql(sql, datasets=dataset))
 
 
 @app.command()

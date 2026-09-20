@@ -8,6 +8,53 @@ the mechanism by which backtests destroy capital.
 
 ## 1. The data is free, and you get what you pay for
 
+### Stooq is blocked, so Yahoo's adjustments are unverified
+
+As of 2026-09-20 Stooq serves a JavaScript proof-of-work anti-bot interstitial
+instead of CSV. QuantLab does not solve anti-bot challenges, so that source fails
+loudly and is disabled in the shipped ingest plan.
+
+The consequence is not merely "one fewer source". Stooq was the **independent
+cross-check** on Yahoo's undocumented adjustment methodology. Without it, every
+equity price in this system comes from one unofficial API whose adjustments nobody
+outside Yahoo can verify, and a systematic error in those adjustments would be
+invisible to this platform.
+
+### Yahoo restates prices for splits that have not happened yet
+
+A May 2014 Apple close comes back as $21.12. The real figure was $591.48. Yahoo has
+divided it by the 7:1 split that June **and** by the 4:1 split six years later.
+
+Returns are unaffected, which is why most signals are safe. But every price-*level*
+signal is wrong and nothing raises: penny-stock filters, nominal price momentum,
+round-number effects, and any dollar-volume threshold computed from price times
+volume. `adj_close` is worse — it is recomputed whenever Yahoo reprocesses a
+corporate action, so a backtest re-run months later can produce different numbers
+from identical code.
+
+### Yahoo sometimes serves only 20 years of history, silently
+
+Observed repeatedly on 2026-09-20: the identical SPY request returned 5462 bars
+from 2005-01-03 on one call and 5030 bars from 2006-09-20 on another minutes later.
+No error either time.
+
+It cannot be detected from the response. When Yahoo truncates, it also reports
+`firstTradeDate` as the start of the truncated range, so the payload is internally
+consistent and every in-payload check passes. Requesting history in eight-year
+windows helps sometimes and not always.
+
+Two things limit the damage, and neither eliminates it:
+
+- The lake is **append-only**, so a later truncated fetch never destroys history
+  you already have, and ingest warns (`ingest.coverage_regression`) when a fetch
+  returns less than the lake holds.
+- On a **first** ingest there is nothing to compare against, so the loss is
+  invisible.
+
+**Practical advice: after your first ingest, check `quantlab data status` against
+the span you expect, and re-run until it matches.** A backtest over 2006-2026
+instead of 2005-2026 excludes the financial crisis, which is not a detail.
+
 ### Equity survivorship bias cannot be fully solved
 
 Without paid CRSP, the universe of US equities that free sources will serve is
@@ -97,7 +144,21 @@ There is no order routing, by design. The gap between a paper-trading loop and l
 execution — queue position, partial fills at your actual broker, borrow
 availability on the day, operational failure — is large and is not simulated here.
 
-## 7. What "reproducible" means here
+## 7. The point-in-time guarantee has a hard edge
+
+`Snapshot` makes look-ahead bias structurally unavailable **for data that is in the
+lake**. It cannot help with the two harder cases:
+
+- **Sources that revise without publishing vintages** (EIA, USDA, CoinGecko market
+  caps). For these, `known_at` is our own download time, so history before the day
+  you started collecting is restated and the platform says so rather than
+  pretending otherwise.
+- **Your own knowledge.** The snapshot does not know which symbols you chose to
+  ingest, and you chose them knowing which ones did well. A universe of fourteen
+  ETFs that still exist in 2026 is a survivorship-biased universe no matter how
+  correct the timestamps are.
+
+## 8. What "reproducible" means here
 
 A given commit plus a given *data snapshot* produces identical results. It does not
 mean re-running ingest reproduces the snapshot: Yahoo restates adjusted closes,

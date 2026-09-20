@@ -1,0 +1,13 @@
+{
+  "_comment": "HAND-CONSTRUCTED from the documented ALFRED response shape (realtime_start/realtime_end per observation when a wide real-time window is requested). Not recorded from the live API -- no free FRED key was available when Milestone 2 was built. The values model a real pattern: one quarter's GDP published as an advance estimate and revised twice, which is exactly the case the vintage machinery exists to handle.",
+  "realtime_start": "1776-07-04",
+  "realtime_end": "9999-12-31",
+  "observations": [
+    {"realtime_start": "2020-04-29", "realtime_end": "2020-05-27", "date": "2020-01-01", "value": "18987.8"},
+    {"realtime_start": "2020-05-28", "realtime_end": "2020-06-24", "date": "2020-01-01", "value": "18952.0"},
+    {"realtime_start": "2020-06-25", "realtime_end": "9999-12-31", "date": "2020-01-01", "value": "18951.9"},
+    {"realtime_start": "2020-07-30", "realtime_end": "2020-08-26", "date": "2020-04-01", "value": "17204.7"},
+    {"realtime_start": "2020-08-27", "realtime_end": "9999-12-31", "date": "2020-04-01", "value": "17258.2"},
+    {"realtime_start": "2020-10-29", "realtime_end": "9999-12-31", "date": "2020-07-01", "value": "18596.5"}
+  ]
+}

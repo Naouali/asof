@@ -1,0 +1,84 @@
+# The default ingest plan.
+#
+# Jobs run in order; each writes to the lake as it completes, so a failure halfway
+# through keeps everything already fetched. Symbol lists are deliberately small:
+# a default that pulls thousands of symbols gets you rate-limited on your first run.
+# Widen them once you know what you are researching.
+#
+#   quantlab data ingest                    # everything enabled here
+#   quantlab data ingest --incremental      # resume from what the lake already has
+#   quantlab data ingest --fetcher binance.ohlcv_bars
+#   quantlab data ingest --dry-run          # show the windows without fetching
+
+defaults:
+  start: "2015-01-01"
+
+jobs:
+  # ---------------------------------------------------------------- crypto ----
+  # The best free data in the system: no key, full history, real bar-close
+  # timestamps. Start at Binance's own beginning rather than the global default.
+  - fetcher: binance.ohlcv_bars
+    description: Daily spot bars for the major pairs.
+    start: "2017-08-17"
+    options:
+      interval: 1d
+    symbols: [BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT, ADAUSDT, DOGEUSDT, LINKUSDT]
+
+  - fetcher: binance.funding_rate
+    description: >-
+      Perpetual funding history -- the input to crypto carry. Funding began on the
+      USD-margined contracts in late 2019.
+    start: "2019-09-08"
+    symbols: [BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT, ADAUSDT, DOGEUSDT, LINKUSDT]
+
+  - fetcher: binance.instruments
+    description: >-
+      Daily snapshot of the traded universe. This is the ONLY defence against crypto
+      survivorship bias: delisted symbols stop being served, so universe history
+      exists only from the day this job starts running. Every day it is skipped is a
+      day that cannot be recovered. Runs hourly in configs/schedule.yaml.
+    symbols: []
+
+  # ---------------------------------------------------------------- equity ----
+  - fetcher: yahoo.ohlcv_daily
+    description: >-
+      Daily bars. Survivorship-biased (delisted tickers vanish) and retroactively
+      split-adjusted, so use returns, not price levels. See docs/LIMITATIONS.md.
+    start: "2005-01-01"
+    symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ]
+
+  - fetcher: yahoo.corporate_actions
+    description: >-
+      Dividends and splits with their own ex-dates -- the honest route to total
+      returns, since Yahoo's adj_close is restated under you.
+    start: "2005-01-01"
+    symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ]
+
+  - fetcher: stooq.ohlcv_daily
+    description: >-
+      DISABLED. As of 2026-09-20 Stooq gates its CSV endpoint behind a JavaScript
+      proof-of-work anti-bot challenge, which QuantLab does not solve. Enabling this
+      job will fail loudly rather than silently returning nothing. The independent
+      cross-check on Yahoo's undocumented adjustments is therefore unavailable.
+    enabled: false
+    symbols: [aapl.us, msft.us]
+
+  # ----------------------------------------------------------- macro / rates --
+  # Both need a free FRED key. Without one these jobs are reported as skipped and
+  # the rest of the plan still runs.
+  - fetcher: fred.series_observations
+    description: >-
+      Never-revised series only: Treasury yields, policy rates, credit spreads, VIX.
+      known_at is the observation date plus the publication lag.
+    start: "1990-01-01"
+    symbols:
+      [DGS1MO, DGS3MO, DGS6MO, DGS1, DGS2, DGS5, DGS10, DGS30,
+       T10Y2Y, T10Y3M, DFF, SOFR, BAMLH0A0HYM2, BAMLC0A0CM, VIXCLS]
+
+  - fetcher: alfred.series_observations
+    description: >-
+      Revised macro series, every vintage, with known_at set to the vintage start.
+      This is the only honest way to build a macro signal. It is slow -- one row per
+      (observation, vintage) pair -- so run it incrementally.
+    start: "1990-01-01"
+    symbols: [GDPC1, CPIAUCSL, PAYEMS, UNRATE, INDPRO, PCEPILFE, HOUST, UMCSENT]

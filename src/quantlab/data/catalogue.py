@@ -236,18 +236,22 @@ _EQUITY: tuple[SourceSpec, ...] = (
         rate_limit="undocumented; throttle hard (<=1 req/s) to avoid IP blocks",
         max_requests_per_second=1.0,
         caveats=(
+            "BLOCKED AS OF 2026-09-20: the CSV endpoint serves a JavaScript "
+            "proof-of-work anti-bot interstitial rather than data. QuantLab does not "
+            "solve anti-bot challenges, so this source fails loudly and the "
+            "independent cross-check on Yahoo's adjustments is unavailable.",
             "ADJUSTMENT METHODOLOGY IS UNDOCUMENTED. Whether dividends are reinvested, "
-            "and on what date, is unstated. Cross-check against yfinance adjusted "
-            "closes before trusting total returns.",
+            "and on what date, is unstated. Cross-check against Yahoo adjusted closes "
+            "before trusting total returns.",
             "Delisted tickers are not reliably retained -- survivorship bias.",
             "No volume for some non-US venues, which breaks the ADV input to the "
             "impact model and therefore the capacity estimate.",
         ),
     ),
     SourceSpec(
-        key="yfinance",
-        name="Yahoo Finance (via yfinance)",
-        url="https://github.com/ranaroussi/yfinance",
+        key="yahoo",
+        name="Yahoo Finance (public chart API)",
+        url="https://query1.finance.yahoo.com/v8/finance/chart/",
         asset_classes=(
             AssetClass.EQUITY,
             AssetClass.FUTURES,
@@ -260,16 +264,22 @@ _EQUITY: tuple[SourceSpec, ...] = (
         licence="Yahoo ToS prohibit redistribution; personal research use only",
         reliability="unofficial",
         key_setting=None,
-        rate_limit="unofficial; aggressive use gets rate-limited or blocked",
+        rate_limit="unpublished; aggressive use gets rate-limited or blocked",
         max_requests_per_second=1.0,
         caveats=(
-            "UNOFFICIAL SCRAPER. Yahoo changes its endpoints without notice and the "
-            "library breaks periodically. Never the ground truth for a production number.",
+            "UNOFFICIAL API. Yahoo publishes no contract for this endpoint and changes "
+            "it without notice. Never the ground truth for a production number.",
             "SEVERELY SURVIVORSHIP-BIASED: delisted tickers disappear entirely. A "
             "universe built from what Yahoo returns today is a universe of winners.",
-            "Adjusted closes are silently restated when Yahoo reprocesses corporate "
-            "actions, so a backtest re-run months later can produce different numbers. "
-            "This is why ingested prices are snapshotted, not re-fetched.",
+            "PRICES ARE RETROACTIVELY SPLIT-ADJUSTED, and not only by splits that had "
+            "already happened. A May 2014 Apple close is served today divided by 28: "
+            "the 7:1 split that June AND the 4:1 split six years later. Returns are "
+            "unaffected, but every price-LEVEL signal -- penny-stock filters, nominal "
+            "price momentum, round-number effects -- is wrong, and nothing raises.",
+            "adj_close is Yahoo's own dividend adjustment, computed by an undocumented "
+            "method and recomputed whenever Yahoo reprocesses a corporate action. Its "
+            "known_at is therefore a fiction. Build total returns from close plus the "
+            "corporate_actions dataset, whose dividends carry their own ex-dates.",
             "Intraday history is capped (roughly 60 days at 1m), so intraday equity "
             "research cannot be backfilled.",
         ),
@@ -747,8 +757,8 @@ _OPTIONS: tuple[SourceSpec, ...] = (
     ),
     SourceSpec(
         key="options_snapshot",
-        name="Self-collected options chain snapshots (via yfinance)",
-        url="https://github.com/ranaroussi/yfinance",
+        name="Self-collected options chain snapshots (Yahoo chart API)",
+        url="https://query1.finance.yahoo.com/v8/finance/chart/",
         asset_classes=(AssetClass.OPTIONS,),
         datasets=("chain_snapshot",),
         pit_quality=PitQuality.AS_PUBLISHED,

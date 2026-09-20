@@ -8,18 +8,27 @@
 
 jobs:
   - name: ingest-daily
-    description: Incremental pull from every available source.
+    description: Incremental pull of equities, macro and rates.
     cron: "30 5 * * 1-5"          # 05:30 UTC, weekdays: after US settlement, before Europe opens
-    command: ["data", "ingest", "--incremental"]
+    command:
+      ["data", "ingest", "--incremental",
+       "-f", "yahoo.ohlcv_daily", "-f", "yahoo.corporate_actions",
+       "-f", "fred.series_observations", "-f", "alfred.series_observations"]
     timeout_seconds: 5400
-    enabled: false                 # Milestone 2
+    enabled: true
 
   - name: ingest-crypto
-    description: Crypto trades continuously, so it updates on weekends too.
+    description: >-
+      Crypto trades continuously, so it updates on weekends too. Hourly rather than
+      daily because binance.instruments is the only record of which symbols existed
+      when: a delisted symbol simply stops being served, and that history cannot be
+      recovered afterwards.
     cron: "10 * * * *"
-    command: ["data", "ingest", "--incremental"]
+    command:
+      ["data", "ingest", "--incremental",
+       "-f", "binance.ohlcv_bars", "-f", "binance.funding_rate", "-f", "binance.instruments"]
     timeout_seconds: 1800
-    enabled: false                 # Milestone 2
+    enabled: true
 
   - name: options-snapshot
     description: >-

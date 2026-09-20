@@ -39,8 +39,32 @@ Then:
 ```bash
 make doctor        # what this installation can and cannot do
 make catalogue     # every data source, its availability, its known biases
+make ingest        # pull data into the lake (works with zero API keys)
+make status        # what the lake holds and how stale it is
 make test
 make down
+```
+
+## Querying the lake
+
+```bash
+# Inspection: sees everything, including data nobody could have known at the time.
+quantlab data query "select symbol, count(*) from ohlcv_daily group by 1"
+
+# Research: only what was knowable on 2020-03-16, enforced in a sandbox that
+# cannot reach the lake files at all.
+quantlab data query --as-of 2020-03-16 -d ohlcv_daily \
+  "select symbol, max(as_of) from ohlcv_daily group by 1"
+```
+
+In Python:
+
+```python
+from quantlab.data.store import Store
+
+snapshot = Store().as_of("2020-03-16")
+bars = snapshot.ohlcv_daily(symbols=["SPY"])     # nothing after 2020-03-16
+snapshot.ohlcv_daily(end="2020-06-01")           # raises LookAheadError
 ```
 
 `make help` lists every target.
@@ -85,7 +109,11 @@ number you might act on lives in `src/` with a test.
 
 ## Status
 
-Milestone 1 of 12 complete: repository skeleton, Docker stack, Makefile, CI, data
-source catalogue. Commands whose implementation lands in a later milestone exit
-non-zero naming that milestone, rather than returning an empty result that could be
-mistaken for a successful run.
+Milestones 1–2 of 12 complete: repository skeleton, Docker stack, CI, the data
+catalogue, and the data layer — parquet lake, point-in-time snapshots, trading
+calendars, and eight fetchers across Yahoo, Binance and FRED/ALFRED.
+
+Commands whose implementation lands in a later milestone exit non-zero naming that
+milestone, rather than returning an empty result that could be mistaken for a
+successful run. See [docs/MILESTONES.md](docs/MILESTONES.md) for what is built and
+what is still unverified.

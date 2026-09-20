@@ -1,14 +1,29 @@
 """One module per external API.
 
-Every source module exposes the uniform interface declared in `sources.base`:
+Every source module exposes :class:`~quantlab.data.sources.base.Source` subclasses
+with a uniform ``fetch(symbols, start, end) -> polars.DataFrame`` interface, and
+registers them under ``"<source>.<dataset>"``.
 
-    fetch(symbols, start, end) -> polars.DataFrame
-
-plus a module-level ``SPEC`` naming its entry in :mod:`quantlab.data.catalogue`.
-Source modules land in Milestone 2 (FRED, Stooq/Yahoo, Binance) and Milestone 9
-(the rest).
+Modules are imported explicitly by :func:`load_all_sources` rather than scanned,
+so that adding a file is a deliberate act and an import error surfaces as an
+import error rather than as a mysteriously absent fetcher.
 """
 
 from __future__ import annotations
 
-__all__: list[str] = []
+import importlib
+
+__all__ = ["SOURCE_MODULES", "load_all_sources"]
+
+SOURCE_MODULES: tuple[str, ...] = (
+    "quantlab.data.sources.binance",
+    "quantlab.data.sources.fred",
+    "quantlab.data.sources.stooq",
+    "quantlab.data.sources.yahoo",
+)
+
+
+def load_all_sources() -> None:
+    """Import every source module, populating the fetcher registry. Idempotent."""
+    for module in SOURCE_MODULES:
+        importlib.import_module(module)

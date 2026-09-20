@@ -48,6 +48,36 @@ def _heartbeats() -> list[dict[str, Any]]:
     return out
 
 
+def _lake() -> list[dict[str, Any]]:
+    """What the lake holds, and how stale each dataset is."""
+    from quantlab.data.store import Store
+
+    out: list[dict[str, Any]] = []
+    for stat in Store(get_settings().layout).stats():
+        age = stat.staleness
+        out.append(
+            {
+                "source": stat.source,
+                "dataset": stat.dataset,
+                "asset_class": stat.asset_class,
+                "rows": stat.rows,
+                "symbols": stat.symbols,
+                "megabytes": round(stat.bytes / 1e6, 1),
+                "first_as_of": stat.first_as_of.isoformat() if stat.first_as_of else None,
+                "last_as_of": stat.last_as_of.isoformat() if stat.last_as_of else None,
+                "age_days": round(age.total_seconds() / 86400, 1) if age else None,
+            }
+        )
+    return out
+
+
+def _last_ingest() -> dict[str, Any] | None:
+    from quantlab.data.ingest import recent_runs
+
+    runs = recent_runs(get_settings().layout.state, limit=1)
+    return runs[-1] if runs else None
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="QuantLab",
@@ -83,6 +113,10 @@ def create_app() -> FastAPI:
             }
         )
 
+    @app.get("/api/lake")
+    def api_lake() -> JSONResponse:
+        return JSONResponse({"datasets": _lake(), "last_ingest": _last_ingest()})
+
     @app.get("/api/sources")
     def api_sources() -> JSONResponse:
         return JSONResponse(
@@ -100,6 +134,8 @@ def create_app() -> FastAPI:
                 "checks": checks,
                 "sources": source_availability(),
                 "heartbeats": _heartbeats(),
+                "lake": _lake(),
+                "last_ingest": _last_ingest(),
                 "status_ok": Status.OK,
                 "status_warn": Status.WARN,
             },

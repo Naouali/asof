@@ -67,6 +67,51 @@
     {% endfor %}
   </div>
 
+  <h2>Data lake</h2>
+  <div class="card scroll">
+    <table>
+      <tr><th>Source</th><th>Dataset</th><th>Rows</th><th>Symbols</th><th>Span</th><th>Age</th><th>Size</th></tr>
+      {% for d in lake %}
+      <tr>
+        <td><code>{{ d.source }}</code></td>
+        <td>{{ d.dataset }}</td>
+        <td>{{ "{:,}".format(d.rows) }}</td>
+        <td>{{ d.symbols }}</td>
+        <td>{{ (d.first_as_of or '—')[:10] }} &rarr; {{ (d.last_as_of or '—')[:10] }}</td>
+        <td class="{{ 'ok' if (d.age_days or 0) < 3 else 'warn' if (d.age_days or 0) < 14 else 'fail' }}">
+            {{ d.age_days }}d</td>
+        <td>{{ d.megabytes }} MB</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">The lake is empty — run <code>quantlab data ingest</code>.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  <p class="note"><strong>Age</strong> is time since the newest observation became
+     <em>knowable</em>, not since we downloaded it. For a source that revises without
+     publishing vintages, those are not the same thing.</p>
+
+  {% if last_ingest %}
+  <h2>Last ingest</h2>
+  <div class="card scroll">
+    <table>
+      <tr><th>Fetcher</th><th>Rows</th><th>Seconds</th><th>Result</th></tr>
+      {% for j in last_ingest.jobs %}
+      <tr>
+        <td><code>{{ j.fetcher }}</code></td>
+        <td>{{ "{:,}".format(j.rows) }}</td>
+        <td>{{ j.seconds }}</td>
+        <td class="{{ 'ok' if j.ok and not j.skipped_reason else 'warn' if j.ok else 'fail' }}">
+          {% if not j.ok %}failed: {{ j.error }}
+          {% elif j.skipped_reason %}skipped: {{ j.skipped_reason }}
+          {% else %}ok{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
   <h2>Data sources</h2>
   <div class="card scroll">
     <table>
@@ -87,7 +132,7 @@
 
   <h2>Not yet built</h2>
   <div class="card">
-    <div class="row"><span class="detail">Paper-trading P&amp;L, strategy comparison, ingest freshness and the
-      signal decay monitor land in Milestone 11. This page shows only what is real today.</span></div>
+    <div class="row"><span class="detail">Paper-trading P&amp;L, strategy comparison and the signal
+      decay monitor land in Milestone 11. This page shows only what is real today.</span></div>
   </div>
 </div>

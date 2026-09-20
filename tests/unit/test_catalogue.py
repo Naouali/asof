@@ -67,7 +67,7 @@ def test_sec_edgar_is_point_in_time() -> None:
 
 
 def test_equity_price_sources_are_flagged_survivorship_biased() -> None:
-    for key in ("stooq", "yfinance"):
+    for key in ("stooq", "yahoo"):
         assert get_source(key).pit_quality is PitQuality.SURVIVORSHIP_BIASED
 
 

@@ -26,12 +26,24 @@ def test_every_scheduled_command_is_a_real_cli_command(repo_root: Path) -> None:
         assert result.exit_code == 0, f"{job.name}: `{' '.join(job.command)}` is not a command"
 
 
-def test_unimplemented_jobs_are_disabled(repo_root: Path) -> None:
-    """Enabled jobs must actually work today; a job that exits 2 every night is noise."""
-    enabled = [j.name for j in load_schedule(repo_root / "configs" / "schedule.yaml") if j.enabled]
-    assert enabled == ["doctor"], (
-        "only `doctor` is implemented in Milestone 1; enable the others as their milestones land"
-    )
+def test_only_implemented_jobs_are_enabled(repo_root: Path) -> None:
+    """Enabled jobs must actually work today; a job that exits 2 every night trains
+    the operator to ignore scheduler failures."""
+    jobs = load_schedule(repo_root / "configs" / "schedule.yaml")
+    enabled = {j.name for j in jobs if j.enabled}
+    assert enabled == {"doctor", "ingest-daily", "ingest-crypto"}
+    # Paper trading and the options collector land in later milestones.
+    assert {j.name for j in jobs if not j.enabled} == {"paper-trading", "options-snapshot"}
+
+
+def test_crypto_universe_snapshot_runs_often(repo_root: Path) -> None:
+    """binance.instruments is the only record of which symbols existed when.
+    Running it rarely loses universe history permanently."""
+    jobs = {j.name: j for j in load_schedule(repo_root / "configs" / "schedule.yaml")}
+    crypto = jobs["ingest-crypto"]
+    assert crypto.enabled
+    assert "binance.instruments" in crypto.command
+    assert crypto.cron.split()[1] == "*", "must run at least hourly"
 
 
 def test_invalid_cron_fails_at_load_not_at_runtime(tmp_path: Path) -> None:
@@ -73,7 +85,11 @@ def test_job_execution_runs_the_cli_and_records_the_result(tmp_path: Path) -> No
     assert heartbeat.status().detail == {"last_job": "ok", "last_result": 0}
 
     # A failing job is recorded, not swallowed, and the scheduler survives it.
-    failing = ScheduledJob(name="failing", cron="0 6 * * *", command=["data", "ingest"])
+    # `backtest` exits 2 immediately (Milestone 4), which makes it a fast, offline
+    # stand-in for any job that fails.
+    failing = ScheduledJob(
+        name="failing", cron="0 6 * * *", command=["backtest", "--config", "nope.yaml"]
+    )
     _run_job(failing, heartbeat)
     assert heartbeat.status().detail == {"last_job": "failing", "last_result": 2}
 

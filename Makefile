@@ -7,6 +7,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help base build up down restart ps logs doctor init ingest ingest-daily \
         backtest paper test lint format typecheck check shell notebook catalogue \
+        status fetchers \
         dashboard lock clean clean-data verify-multiarch dev-image
 
 COMPOSE      ?= docker compose
@@ -88,6 +89,12 @@ ingest-daily:  ## Incremental data update
 
 catalogue:  ## List data sources, their availability and their caveats
 	$(COMPOSE) exec -T worker quantlab data catalogue
+
+status:  ## Show what the lake holds and how stale it is
+	$(COMPOSE) exec -T worker quantlab data status
+
+fetchers:  ## List every fetcher and whether it can run right now
+	$(COMPOSE) exec -T worker quantlab data fetchers
 
 backtest:  ## Run a backtest: make backtest CONFIG=configs/trend_futures.yaml
 	@test -n "$(CONFIG)" || { echo "usage: make backtest CONFIG=configs/<strategy>.yaml"; exit 2; }

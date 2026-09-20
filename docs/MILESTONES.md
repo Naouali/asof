@@ -6,7 +6,7 @@ and committed.
 | # | Milestone | Status |
 | --- | --- | --- |
 | 1 | Skeleton + Docker: repo structure, compose stack, Makefile, CI | **complete** |
-| 2 | Data layer: store, PIT machinery, calendars, FRED + Stooq/Yahoo + Binance | not started |
+| 2 | Data layer: store, PIT machinery, calendars, FRED + Stooq/Yahoo + Binance | **complete** |
 | 3 | Cost models: square-root impact, spread, financing, capacity calculator | not started |
 | 4 | Vectorised backtest engine with enforced accounting identities | not started |
 | 5 | Validation: CPCV, DSR with automatic trial counting, PBO, empirical-Bayes shrinkage | not started |
@@ -56,10 +56,56 @@ execution, the CLI, the dashboard, repository structure (layering, the pandas ba
 the no-broker-SDK rule) and the compose stack's operational guarantees. Integration
 tests that need a Docker daemon are marked and skipped without one.
 
+## Milestone 2 — what was delivered
+
+**Storage**
+- Parquet lake, Hive-partitioned `source/dataset/asset_class/year`, queried
+  in-process by DuckDB. Append-only: a restatement is a new row with a later
+  `known_at`, and the superseded value stays on disk.
+- Six canonical dataset schemas, strictly validated on write. Every row carries
+  `as_of`, `known_at` and `ingested_at` as timezone-aware UTC microseconds.
+- Partition filenames are content-addressed, so re-ingesting identical data is a
+  no-op and the incremental overlap window costs nothing.
+
+**Point-in-time**
+- `store.as_of(date)` returns a `Snapshot` enforcing the contract four ways:
+  query filtering, argument guards that raise rather than truncate, a
+  post-condition check on every returned frame, and a DuckDB sandbox built with
+  `enable_external_access=false` that cannot reach the lake files at all.
+- 24 leakage tests attack the contract from each of those angles, including a
+  monkeypatched regression that removes the filter and asserts the post-condition
+  catches it.
+
+**Calendars** — session closes in UTC per venue, DST- and half-day-correct.
+Unknown venues raise instead of defaulting to a US calendar.
+
+**Sources** — eight fetchers behind one interface:
+`yahoo.ohlcv_daily`, `yahoo.corporate_actions`, `binance.ohlcv_bars`,
+`binance.funding_rate`, `binance.instruments`, `fred.series_observations`,
+`alfred.series_observations`, `stooq.ohlcv_daily` (blocked, fails loudly).
+
+**Ingest** — plan-driven, resumable from the lake without a cursor file, with
+per-source token-bucket rate limiting, deterministic backoff, Binance weight-header
+throttling, an offline mode that refuses sockets, and a JSONL run registry.
+
+**CLI** — `data ingest`, `data status`, `data fetchers`, `data query` (with
+`--as-of` running inside the point-in-time sandbox).
+
+**Tests** — 251 unit tests, all offline: a transport-level block fails any test
+that opens a socket. Fixtures are real recorded payloads; provenance is documented
+in `tests/fixtures/README.md`.
+
 ## Not yet verified
 
-The `make up` acceptance criterion has **not** been executed: the development
-machine has the Docker CLI but no daemon. The compose file, Dockerfiles and
-Makefile are covered by static tests and by CI jobs written for it, but the first
-real `docker compose up` will happen either in CI or on a machine with a running
-daemon. Treat the Docker layer as unproven until one of those goes green.
+**Docker.** The `make up` acceptance criterion has still **not** been executed: the
+development machine has the Docker CLI but no daemon. The compose file, Dockerfiles
+and Makefile are covered by static tests and by CI jobs written for them, but the
+first real `docker compose up` will happen either in CI or on a machine with a
+running daemon. Treat the Docker layer as unproven until one of those goes green.
+
+**FRED and ALFRED.** No free FRED key was available, so neither fetcher has been
+run against the live API. Their guard rails are tested, and their parsers are
+tested against fixtures **hand-constructed from the published response shape**
+rather than recorded — which asserts that the parser handles the documented shape,
+not the actual one. Re-record both fixtures once a key is configured; this is
+flagged in `tests/fixtures/README.md`.

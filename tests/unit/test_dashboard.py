@@ -44,3 +44,29 @@ def test_dashboard_references_no_external_assets() -> None:
         body = client.get("/").text
     for scheme in ("http://", "https://"):
         assert scheme not in body, "dashboard must not reference external assets"
+
+
+def test_api_lake_reports_what_is_stored(populated_store) -> None:
+    with TestClient(create_app()) as client:
+        payload = client.get("/api/lake").json()
+    assert payload["datasets"]
+    dataset = payload["datasets"][0]
+    assert dataset["dataset"] == "ohlcv_daily"
+    assert dataset["rows"] == 7
+    assert dataset["age_days"] is not None
+
+
+def test_index_shows_the_lake_and_its_staleness(populated_store) -> None:
+    with TestClient(create_app()) as client:
+        body = client.get("/").text
+    assert "Data lake" in body
+    assert "ohlcv_daily" in body
+    assert "knowable" in body, "staleness must be explained, not just displayed"
+
+
+def test_empty_lake_renders_without_error(settings) -> None:
+    settings.layout.ensure()
+    with TestClient(create_app()) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert "The lake is empty" in response.text

@@ -113,7 +113,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S603", "S607"]  # asserts and subprocess calls are the point
+"tests/**" = ["S101", "S603", "S607", "S608"]  # asserts, subprocesses and deliberately-malicious SQL are the point
 "scripts/**" = ["S603"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
@@ -128,7 +128,7 @@ quote-style = "double"
 # Types
 # ----------------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"  # matches the Docker images; numpy stubs need 3.12 syntax
 files = ["src/quantlab"]
 strict = true
 warn_unreachable = true
@@ -160,6 +160,8 @@ branch = true
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "raise NotImplementedError", "if TYPE_CHECKING:"]
 
-# Spec section 11: coverage on these four packages is non-negotiable.
-# The threshold is raised to 85 in Milestone 5, once the modules exist.
-fail_under = 0
+# Spec section 11: >85% on costs, validation, backtest and data/pit is
+# non-negotiable. data/pit exists as of Milestone 2 and the data layer as a whole
+# sits at 91%; the floor rises again as costs (M3), backtest (M4) and validation
+# (M5) land.
+fail_under = 85
