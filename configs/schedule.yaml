@@ -36,9 +36,9 @@ jobs:
       our history starts the day this job starts running -- every day it is
       disabled is a day of history that can never be recovered.
     cron: "0 21 * * 1-5"          # 21:00 UTC ~= 16:00 ET, after the US close
-    command: ["data", "ingest", "--incremental"]
+    command: ["data", "ingest", "-f", "options_snapshot.chain_snapshot"]
     timeout_seconds: 1800
-    enabled: false                 # Milestone 9
+    enabled: true
 
   - name: paper-trading
     description: Compute today's signals, produce target positions, mark to market.

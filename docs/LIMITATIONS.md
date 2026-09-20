@@ -446,3 +446,50 @@ live on Google Drive behind ids that change on re-upload, with no versioned URL,
 no content hash and no API. The id is pinned and the payload shape is checked, so
 a change fails loudly — but it will fail, and when it does the fix is a manual
 re-pin rather than anything automatic.
+
+## Option chains (Milestone 9)
+
+**This dataset has no history and never will have.** No free source sells
+historical option chains. The collector's first run is 2026-09-20, and nothing
+before that date exists or can be obtained. Any options research is therefore
+limited to the window since collection began, and that window only grows if the
+job keeps running. A gap in it is permanent.
+
+**A snapshot is not a path.** One observation a day, from a delayed file. Realised
+gamma P&L, intraday hedging error, anything that needs the path between two
+closes — none of it can be reconstructed from this however long it accumulates.
+
+**Quote quality degrades sharply away from the money.** Measured on one SPX
+chain of 20,236 quotes with open interest:
+
+| moneyness | implied vol (median) | relative spread (median) |
+| --- | --- | --- |
+| near the money (0.9–1.1×) | 0.14 | 1.2% |
+| below 0.5× spot | 0.59, max **4.49** | 7.1% |
+| above 1.5× spot | 0.15 | 16.3% |
+
+A 449% implied volatility on a deep in-the-money call is not a volatility, it is
+an artefact of inverting a price that is essentially intrinsic value. Use the
+near-the-money surface; treat the wings as indicative at best.
+
+**The greeks are CBOE's.** Computed with a model, dividend assumption and rate
+curve none of which is published with the numbers. They are stored because a free
+field is worth keeping, and they should be recomputed before anything is traded
+on them.
+
+## EIA (Milestone 9)
+
+**Not point-in-time, and unfixably so.** EIA revises weekly inventories and
+monthly production and serves only the current value. There is no ALFRED
+equivalent — the number as first published is not archived anywhere, by EIA or by
+anyone else. Every row is therefore restated, a backtest reading it has
+look-ahead, and nothing in this codebase can remove it. The mitigations are to
+lag the series well past the revision window, or to treat any result built on it
+as an upper bound. A warning is logged on every fetch so this cannot be forgotten
+quietly.
+
+**Not run against the live API.** No free EIA key was configured, so the parser
+is tested against a fixture hand-built from EIA's documented v2 envelope. That
+asserts it handles the documented shape, not the actual one — the same debt FRED
+carried until a key arrived. The release-date arithmetic, which is where the
+look-ahead risk lives, needs no key and is fully tested.

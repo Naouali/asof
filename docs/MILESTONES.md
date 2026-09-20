@@ -13,7 +13,7 @@ and committed.
 | 6 | Tier 1 signals: time-series momentum, cross-asset carry, equity profitability | **complete** |
 | 7 | Portfolio construction: vol targeting, risk parity, turnover-aware optimisation, factor risk model | **complete** |
 | 8 | Reporting: tearsheets with capacity and validation statistics | **complete** |
-| 9 | Remaining data sources: SEC EDGAR, CFTC COT, EIA, academic factors, options collector | not started |
+| 9 | Remaining data sources: SEC EDGAR, CFTC COT, EIA, academic factors, options collector | **complete** |
 | 10 | Event-driven engine and Tier 2 signals | not started |
 | 11 | Paper trading loop, dashboard, decay monitor | not started |
 | 12 | Documentation: data catalogue, how-to-add-a-signal, LIMITATIONS.md | in progress |
@@ -407,6 +407,72 @@ flattering thing a downsample can do. Equity now takes the last value in each
 bucket and drawdown takes the minimum, so the worst drawdown cannot be lost. A
 test constructs a single-bar 60% crash in four thousand bars and asserts it
 survives a 50-point render.
+
+## Milestone 9 — what was delivered
+
+Six sources, and the point-in-time contract is the work in every one of them.
+None of these payloads carries the date its data became public, so each release
+time had to be established from the publisher's own documentation and derived.
+
+| Source | Rows | The lag that had to be derived |
+| --- | --- | --- |
+| CFTC COT | 290,646 | Tuesday snapshot, Friday 15:30 ET release |
+| SEC EDGAR | 19,760 | filed date at EDGAR's 17:30 ET acceptance cutoff |
+| CBOE indices | 27,311 | 16:15 ET settlement |
+| OSAP catalogue | 331 | sample end vs publication, kept apart |
+| Options chains | 20,236/day | CBOE's quote timestamp, not collection time |
+| EIA | — | Wed/Thu 10:30 ET release (awaiting a key) |
+
+US federal holiday rules were written out for this: the federal calendar is not
+the exchange calendar, three of these publishers are federal agencies, and
+pandas — which has the rules — is banned here.
+
+**The options collector is enabled**, and that is a deliberate decision rather
+than a default. It is the only dataset in the platform that cannot be
+backfilled: no free source sells historical chains, so its history starts the day
+it first runs and every day it is off is gone permanently. It reads CBOE delayed
+quotes rather than the Yahoo endpoint the catalogue originally named, because
+Yahoo now refuses unauthenticated callers and CBOE serves the exchange's own data
+with greeks and no credentials.
+
+**The anomaly catalogue** is the most useful thing here for the platform's actual
+purpose. 212 published cross-sectional predictors with the t-statistic each
+original paper reported: median 4.0, and only 2.7% below |t| = 2. That is not
+evidence the field finds real effects, it is evidence of where journals stop
+accepting papers, and it makes the distribution a lower bound on how hard the
+space has been searched. `quantlab validate anomalies` places a result in it.
+
+### Bugs found
+
+- **YAML parsed contract codes as octal.** `002602` became 1410, Socrata answers
+  an unknown code with an empty array rather than an error, and only codes whose
+  digits are all 0-7 were affected — so gold survived and corn did not. It cost
+  57% of the COT data silently: 185,402 rows against 290,646.
+- **`federal_holidays(1994)` held a date from 1993.** A Saturday New Year's Day
+  is observed on 31 December of the previous year, so it was filed under a year
+  no lookup would search. Found by a sweep over 1986-2040.
+- **The coverage-regression detector cried wolf.** It grouped by symbol alone, so
+  one contract under three reports beginning 1992, 2006 and 2006 tripped it every
+  ingest. It now groups by the schema key.
+- **`fy` on an XBRL fact is the filing's fiscal year, not the fact's.** Apple's
+  FY2023 revenue restated in the FY2025 10-K carries fy=2025.
+- **equity.profitability mixed reporting periods.** It took the most recently
+  *filed* value per metric, giving nine-month revenue, one quarter's SG&A and a
+  three-year-stale interest expense over an instantaneous balance sheet. For
+  Apple that understated gross profitability by 16%; across the universe it moved
+  Walmart from last place to first.
+
+### Measured, not assumed
+
+- XBRL coverage over five large filers: revenue, total assets, book equity and
+  interest expense present for all five, cost of goods sold for three. JPMorgan
+  has none because banks do not report one — so dropping filers with missing line
+  items drops financials, not a random sample.
+- COT's accounting identity holds to **zero** on both sides across 142 weeks,
+  which verifies the column mapping rather than assuming it.
+- SPX option quote quality by moneyness: near the money, implied vol median 0.14
+  and relative spread 1.2%; below half spot, implied vol reaches 4.49 and spreads
+  7%; above 1.5× spot, spreads 16%.
 
 ## Not yet verified
 

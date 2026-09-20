@@ -329,6 +329,36 @@ DATASETS: dict[str, DatasetSchema] = {
         key=("symbol",),
         required=("name", "category"),
     ),
+    "chain_snapshot": DatasetSchema(
+        name="chain_snapshot",
+        description=(
+            "One option quote, as it stood at a point in time. `as_of` is the "
+            "instant the quotes describe and `known_at` is when the snapshot was "
+            "taken.\n\n"
+            "This dataset is unlike every other one here: it CANNOT be backfilled. "
+            "No free source sells historical option chains, so the history begins "
+            "on the day the collector first runs and every day it does not run is "
+            "a day that can never be recovered. Treat a gap in it as permanent."
+        ),
+        columns={
+            "expiry": pl.Date(),
+            "strike": pl.Float64(),
+            "right": pl.Utf8(),
+            "bid": pl.Float64(),
+            "ask": pl.Float64(),
+            "last": pl.Float64(),
+            "volume": pl.Float64(),
+            "open_interest": pl.Float64(),
+            "implied_vol": pl.Float64(),
+            "delta": pl.Float64(),
+            "gamma": pl.Float64(),
+            "vega": pl.Float64(),
+            "theta": pl.Float64(),
+            "underlying_price": pl.Float64(),
+        },
+        key=("symbol", "expiry", "strike", "right"),
+        required=("expiry", "strike", "right"),
+    ),
     "instruments": DatasetSchema(
         name="instruments",
         description=(

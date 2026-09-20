@@ -17,6 +17,8 @@ __all__ = ["SOURCE_MODULES", "load_all_sources"]
 
 SOURCE_MODULES: tuple[str, ...] = (
     "quantlab.data.sources.binance",
+    "quantlab.data.sources.eia",
+    "quantlab.data.sources.options",
     "quantlab.data.sources.open_asset_pricing",
     "quantlab.data.sources.cboe",
     "quantlab.data.sources.edgar",

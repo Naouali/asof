@@ -64,6 +64,19 @@ jobs:
     symbols: [aapl.us, msft.us]
 
   # --------------------------------------------------------- academic factors --
+  # ------------------------------------------------------------------ options ----
+  # THE ONLY DATASET HERE THAT CANNOT BE BACKFILLED. No free source sells
+  # historical option chains, so this history begins the day the collector first
+  # runs and every day it is skipped is gone for good. Scheduled daily in
+  # configs/schedule.yaml for that reason.
+  #
+  # One SPX chain is ~20,000 quotes a day with open interest. Widen the symbol
+  # list deliberately: each additional underlying is another chain every day,
+  # for ever.
+  - fetcher: options_snapshot.chain_snapshot
+    description: Daily option chain snapshot from CBOE delayed quotes.
+    symbols: [SPX]
+
   # -------------------------------------------------------- the literature ----
   # Every published cross-sectional equity predictor Chen & Zimmermann could
   # find, with the t-statistic the original paper reported. This is the trial

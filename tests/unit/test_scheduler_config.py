@@ -31,9 +31,25 @@ def test_only_implemented_jobs_are_enabled(repo_root: Path) -> None:
     the operator to ignore scheduler failures."""
     jobs = load_schedule(repo_root / "configs" / "schedule.yaml")
     enabled = {j.name for j in jobs if j.enabled}
-    assert enabled == {"doctor", "ingest-daily", "ingest-crypto"}
-    # Paper trading and the options collector land in later milestones.
-    assert {j.name for j in jobs if not j.enabled} == {"paper-trading", "options-snapshot"}
+    assert enabled == {"doctor", "ingest-daily", "ingest-crypto", "options-snapshot"}
+    # Paper trading lands in Milestone 11.
+    assert {j.name for j in jobs if not j.enabled} == {"paper-trading"}
+
+
+def test_the_options_collector_is_enabled_because_it_cannot_be_backfilled(
+    repo_root: Path,
+) -> None:
+    """Every other job here can be re-run from the beginning. No free source
+    sells historical option chains, so this one's history starts the day it first
+    runs and every day it is off is a day that can never be recovered. Leaving it
+    disabled is not a neutral default -- it is a decision to have no options data
+    for however long it stays off."""
+    jobs = {j.name: j for j in load_schedule(repo_root / "configs" / "schedule.yaml")}
+    snapshot = jobs["options-snapshot"]
+
+    assert snapshot.enabled
+    assert "options_snapshot.chain_snapshot" in snapshot.command
+    assert snapshot.cron.split()[4] == "1-5", "chains only change on trading days"
 
 
 def test_crypto_universe_snapshot_runs_often(repo_root: Path) -> None:

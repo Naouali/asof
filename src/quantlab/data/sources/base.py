@@ -124,7 +124,13 @@ class Source(ABC):
             return True, "keyless"
         if self.settings.secret_for(self.spec.key_setting):
             return True, f"QUANTLAB_{self.spec.key_setting.upper()} is set"
-        return False, f"QUANTLAB_{self.spec.key_setting.upper()} is not set"
+        # Name where the key comes from, not just that it is missing. The
+        # platform is required to run with none, so this message is the normal
+        # experience of a new installation rather than an error condition.
+        return False, (
+            f"QUANTLAB_{self.spec.key_setting.upper()} is not set. "
+            f"{self.spec.name} issues free keys at {self.spec.url}"
+        )
 
     def require_available(self) -> None:
         ok, reason = self.availability()
