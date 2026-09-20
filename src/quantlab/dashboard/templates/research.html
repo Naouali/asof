@@ -66,13 +66,27 @@ button:disabled{opacity:.45;cursor:progress}
 svg{display:block;width:100%;height:auto}
 .axis{font-size:9.5px;fill:var(--muted)}
 .grid-l{stroke:var(--line);stroke-width:1}
+.search{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+.search input{flex:1;font-size:14px;padding:9px 12px}
+.search .n{font-size:12px;color:var(--muted);white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.chip{font-size:10.5px;padding:2px 6px;border-radius:4px;background:var(--bg);
+ border:1px solid var(--line);color:var(--muted)}
+.hm td{padding:0;border:0}
+.hm .lbl{font-size:10.5px;color:var(--muted);padding:2px 6px;white-space:nowrap}
+.hm .cell{width:34px;height:26px;text-align:center;font-size:10px;color:#fff;
+ font-variant-numeric:tabular-nums}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:900px){.two{grid-template-columns:1fr}}
 </style>
 
 <div class="shell">
 <nav>
   <h1>QuantLab</h1>
   <div class="v">v{{ version }}</div>
-  <a class="on" data-v="overview">Strategies</a>
+  <a class="on" data-v="instruments">Instruments</a>
+  <a data-v="portfolio">Portfolio</a>
+  <a data-v="overview">Strategies</a>
   <a data-v="signals">Signals</a>
   <a data-v="sweep">Sweep</a>
   <a data-v="data">Data</a>
@@ -338,12 +352,161 @@ async function viewTrials() {
       </table></div>`;
 }
 
+/* ----------------------------------------------------------- instruments */
+let INSTRUMENTS = [];
+async function viewInstruments() {
+  $("#view").innerHTML = `<h2>Instruments</h2><p class="spin">indexing the lake…</p>`;
+  if (!INSTRUMENTS.length) INSTRUMENTS = (await get("/api/instruments")).instruments;
+  renderInstruments("");
+}
+function renderInstruments(q) {
+  const term = q.trim().toLowerCase();
+  const hits = INSTRUMENTS.filter(i => !term
+    || i.symbol.toLowerCase().includes(term)
+    || (i.name||"").toLowerCase().includes(term)
+    // Former names too: the CFTC's two-year note is now "UST 2Y NOTE" and was
+    // "2 YEAR U.S. TREASURY NOTES". Someone typing "treasury" means that one.
+    || (i.aliases||[]).some(a => a.toLowerCase().includes(term)));
+  const rows = hits.slice(0, 250).map(i => `<tr class="click" onclick="viewInstrument('${H(i.symbol)}')">
+      <td><b>${H(i.symbol)}</b></td>
+      <td class="muted">${H(i.name||"")}</td>
+      <td>${i.datasets.map(d=>`<span class="chip">${H(d)}</span>`).join(" ")}</td>
+      <td class="n">${(i.rows||0).toLocaleString()}</td>
+      <td class="muted">${H(i.first||"")} → ${H(i.last||"")}</td></tr>`).join("");
+  $("#view").innerHTML = `<h2>Instruments</h2>
+    <p class="lede">Every symbol the lake holds, built from the data rather than a
+     maintained list — so nothing can be present in the data and missing here.
+     Search by ticker or name.</p>
+    <div class="search">
+      <input id="iq" placeholder="corn, AAPL, BTC, treasury…" value="${H(q)}"
+             oninput="renderInstruments(this.value)" autofocus>
+      <span class="n">${hits.length} of ${INSTRUMENTS.length}${hits.length>250?" (showing 250)":""}</span>
+    </div>
+    <div class="panel"><table>
+      <tr><th>Symbol</th><th>Name</th><th>Datasets</th><th class="n">Rows</th><th>Span</th></tr>
+      ${rows || `<tr><td colspan="5" class="muted">No instrument matches “${H(q)}”.</td></tr>`}
+    </table></div>`;
+  const box = $("#iq"); if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+}
+async function viewInstrument(sym) {
+  $("#view").innerHTML = `<p class="spin">loading ${H(sym)}…</p>`;
+  const d = await get("/api/instruments/" + encodeURIComponent(sym));
+  if (!d.ok) { $("#view").innerHTML = `<div class="verdict bad">${H(d.error)}</div>`; return; }
+  const st = d.stats;
+  const kpis = st ? [
+    ["Last close", N(st.last_close), `${H(st.last)}`],
+    ["History", st.bars.toLocaleString()+" bars", `${H(st.first)} → ${H(st.last)}`],
+    ["CAGR", P(st.cagr), `over ${N(st.years,1)} years`],
+    ["Volatility", P(st.volatility), "annualised"],
+    ["Max drawdown", P(st.max_drawdown), ""],
+    ["Buy-and-hold Sharpe", N(st.buy_hold_sharpe), "not a strategy result"],
+  ].map(([k,v,s])=>`<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("") : "";
+
+  const hist = d.history || [];
+  const charts = hist.length ? `
+    <div class="panel"><h3>Price — log scale (${H(d.price_dataset)})</h3>
+      ${lineChart([{name:sym,points:hist.map(p=>({x:Date.parse(p.t),y:p.close}))}],{yfmt:v=>N(v,v<10?2:0)})}</div>
+    <div class="panel"><h3>Drawdown from peak</h3>
+      ${lineChart([{name:"dd",points:hist.map(p=>({x:Date.parse(p.t),y:p.drawdown}))}],{log:false,h:150,yfmt:v=>P(v,0)})}</div>` : "";
+
+  const fun = (d.fundamentals||[]).length ? `<div class="panel"><h3>Fundamentals — latest annual, as filed</h3>
+      <table>${d.fundamentals.map(f=>`<tr><td>${H(f.metric)}</td>
+        <td class="n">${Math.abs(f.value)>1e6?(f.value/1e9).toFixed(2)+"bn":N(f.value)}</td></tr>`).join("")}</table></div>` : "";
+
+  const pos = (d.positioning||[]).length ? `<div class="panel"><h3>CFTC positioning — ${H(d.positioning[0].as_of)}</h3>
+      <table><tr><th>Report</th><th>Category</th><th>Measure</th><th class="n">Contracts</th></tr>
+      ${d.positioning.map(r=>`<tr><td class="muted">${H(r.report)}</td><td>${H(r.category)}</td>
+        <td class="muted">${H(r.measure)}</td><td class="n">${r.value.toLocaleString()}</td></tr>`).join("")}</table></div>` : "";
+
+  $("#view").innerHTML = `<h2>${H(d.symbol)}</h2>
+    <p class="lede"><a onclick="go('instruments')" style="cursor:pointer;color:var(--accent)">&larr; all instruments</a>
+      &nbsp;·&nbsp; point-in-time as of ${H(d.as_of)}</p>
+    <div class="cards">${kpis}</div>${charts}
+    <div class="panel"><h3>What the lake holds</h3><table>
+      <tr><th>Dataset</th><th class="n">Rows</th><th>Span</th></tr>
+      ${(d.datasets||[]).map(r=>`<tr><td>${H(r.dataset)}</td><td class="n">${r.rows.toLocaleString()}</td>
+        <td class="muted">${H(r.first)} → ${H(r.last)}</td></tr>`).join("")}</table></div>
+    ${fun}${pos}`;
+}
+
+/* ------------------------------------------------------------- portfolio */
+function viewPortfolio() {
+  $("#view").innerHTML = `<h2>Portfolio</h2>
+   <p class="lede">How do these go together? Correlation is estimable from a few hundred
+    observations in a way expected return is not, so this answers the reliable question.
+    <b>Weights are the less interesting half</b> — risk share is what the book is actually
+    exposed to. No expected returns are estimated.</p>
+   <div class="panel"><div class="form">
+     <div><label>Instruments</label><input id="pf" value="SPY, QQQ, TLT, GLD, EEM, USO"></div>
+     <div><label>Method</label><select id="pm">
+       <option value="risk-parity">risk parity — equal risk</option>
+       <option value="equal">equal weight</option>
+       <option value="inverse-vol">inverse volatility</option>
+       <option value="min-variance">minimum variance</option></select></div>
+     <div><label>As of</label><input id="pa" value="{{ today }}"></div>
+   </div><button onclick="runPortfolio()">Construct</button></div>
+   <div id="po"></div>`;
+}
+function heat(v) {
+  const t = Math.max(-1, Math.min(1, v));
+  const c = t >= 0 ? [26,61,109] : [192,57,43];
+  const a = 0.12 + 0.78*Math.abs(t);
+  return `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(2)})`;
+}
+async function runPortfolio() {
+  const b = event.target; b.disabled = true;
+  $("#po").innerHTML = `<p class="spin">estimating covariance…</p>`;
+  const syms = $("#pf").value;
+  const d = await post("/api/portfolio", {symbols:syms, method:$("#pm").value, as_of:$("#pa").value});
+  b.disabled = false;
+  if (!d.ok) { $("#po").innerHTML = `<div class="verdict bad">${H(d.error)}</div>`; return; }
+  const p = d.portfolio;
+
+  const hist = await post("/api/portfolio/history", {
+    symbols: d.positions.map(x=>x.symbol), weights: d.positions.map(x=>x.weight), as_of:$("#pa").value});
+
+  const kpis = [
+    ["Portfolio volatility", P(p.volatility), "annualised"],
+    ["Average correlation", N(p.average_correlation,3), "pairwise"],
+    ["Independent bets", N(p.independent_bets,1), `from ${p.instruments} instruments`],
+    ["Effective positions", N(p.effective_positions,1), "inverse Herfindahl"],
+  ].map(([k,v,s])=>`<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
+
+  const sym = d.correlation.symbols, M = d.correlation.matrix;
+  const heatmap = `<table class="hm"><tr><td></td>${sym.map(s=>`<td class="lbl">${H(s)}</td>`).join("")}</tr>
+    ${M.map((row,i)=>`<tr><td class="lbl">${H(sym[i])}</td>
+      ${row.map(v=>`<td class="cell" style="background:${heat(v)}">${v.toFixed(2)}</td>`).join("")}</tr>`).join("")}</table>`;
+
+  $("#po").innerHTML = `<div class="cards">${kpis}</div>
+    <div class="two">
+      <div class="panel"><h3>Weight</h3>
+        ${barChart(d.positions.map(x=>({k:x.symbol,v:x.weight})),{w:460,fmt:v=>P(v)})}</div>
+      <div class="panel"><h3>Risk share — what you are actually exposed to</h3>
+        ${barChart(d.positions.map(x=>({k:x.symbol,v:x.risk_share,color:COLORS[1]})),{w:460,fmt:v=>P(v)})}</div>
+    </div>
+    <div class="panel"><h3>Correlation</h3>${heatmap}
+      <p class="muted" style="margin-top:10px">${p.instruments} instruments, average pairwise
+       correlation ${N(p.average_correlation,3)} — worth about <b>${N(p.independent_bets,1)}
+       independent bets</b>. Equicorrelation is a lower bound; genuine sector structure
+       diversifies somewhat better.</p></div>
+    ${hist.ok?`<div class="panel"><h3>How they moved together</h3>
+      ${lineChart([{name:"pf",points:hist.points.map(p=>({x:Date.parse(p.t),y:p.value}))}],{h:220,yfmt:v=>N(v,2)})}
+      <p class="muted" style="margin-top:8px">${H(hist.note)}</p></div>`:""}
+    <div class="panel"><h3>Positions</h3><table>
+      <tr><th>Symbol</th><th class="n">Weight</th><th class="n">Volatility</th><th class="n">Risk share</th></tr>
+      ${d.positions.map(x=>`<tr><td><b>${H(x.symbol)}</b></td><td class="n">${P(x.weight)}</td>
+        <td class="n">${P(x.volatility)}</td><td class="n">${P(x.risk_share)}</td></tr>`).join("")}
+      </table>${d.dropped.length?`<p class="warn">Dropped for gaps over the window: ${d.dropped.map(H).join(", ")}</p>`:""}
+      <p class="muted" style="margin-top:10px">${H(d.note)}</p></div>`;
+}
+
 /* ------------------------------------------------------------------ router */
-const VIEWS = {overview:viewOverview, signals:viewSignals, sweep:viewSweep, data:viewData, trials:viewTrials};
+const VIEWS = {instruments:viewInstruments, portfolio:viewPortfolio, overview:viewOverview,
+               signals:viewSignals, sweep:viewSweep, data:viewData, trials:viewTrials};
 function go(name) {
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on", a.dataset.v===name));
   VIEWS[name]();
 }
 document.querySelectorAll("nav a").forEach(a=>a.onclick=()=>go(a.dataset.v));
-go("overview");
+go("instruments");
 </script>

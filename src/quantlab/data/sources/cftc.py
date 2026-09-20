@@ -396,6 +396,7 @@ class CftcPositioning(Source):
             "as_of": as_of,
             "known_at": known_at,
             "report": self.report_name,
+            "name": _clean(record.get("market_and_exchange_names")),
             "contract_units": _clean(record.get("contract_units")),
             "exchange": _clean(record.get("cftc_market_code")),
         }

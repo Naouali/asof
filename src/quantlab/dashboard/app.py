@@ -207,6 +207,46 @@ def create_app() -> FastAPI:
             {"sources": [a.as_dict() for a in source_availability()], "count": len(SOURCES)}
         )
 
+    @app.get("/api/instruments")
+    def api_instruments() -> JSONResponse:
+        from quantlab.dashboard.instruments import instrument_index
+
+        return JSONResponse(instrument_index())
+
+    @app.get("/api/instruments/{symbol}")
+    def api_instrument(symbol: str) -> JSONResponse:
+        from quantlab.dashboard.instruments import instrument_detail
+
+        return JSONResponse(instrument_detail(symbol))
+
+    @app.post("/api/portfolio")
+    def api_portfolio(body: dict[str, Any]) -> JSONResponse:
+        from quantlab.dashboard.actions import today
+        from quantlab.dashboard.portfolio_view import build_portfolio
+
+        symbols = _symbol_list(body.get("symbols")) or []
+        return JSONResponse(
+            build_portfolio(
+                symbols,
+                as_of=str(body.get("as_of") or today()),
+                method=str(body.get("method") or "risk-parity"),
+                lookback=int(body.get("lookback") or 504),
+            )
+        )
+
+    @app.post("/api/portfolio/history")
+    def api_portfolio_history(body: dict[str, Any]) -> JSONResponse:
+        from quantlab.dashboard.actions import today
+        from quantlab.dashboard.portfolio_view import portfolio_history
+
+        return JSONResponse(
+            portfolio_history(
+                list(body.get("symbols") or []),
+                [float(w) for w in (body.get("weights") or [])],
+                str(body.get("as_of") or today()),
+            )
+        )
+
     @app.get("/api/strategies")
     def api_strategies() -> JSONResponse:
         from quantlab.dashboard.actions import saved_strategies

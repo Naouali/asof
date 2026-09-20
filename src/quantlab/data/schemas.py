@@ -289,6 +289,10 @@ DATASETS: dict[str, DatasetSchema] = {
         ),
         columns={
             "report": pl.Utf8(),
+            #: The market as CFTC names it. Stored because a contract market code
+            #: is opaque -- "002602" is corn, and nobody looking for corn will
+            #: type that.
+            "name": pl.Utf8(),
             "category": pl.Utf8(),
             "measure": pl.Utf8(),
             "value": pl.Float64(),

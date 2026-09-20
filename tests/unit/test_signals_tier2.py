@@ -45,6 +45,7 @@ def positioning_rows(
                     "known_at": as_of + dt.timedelta(days=3),
                     "ingested_at": as_of + dt.timedelta(days=3),
                     "report": report,
+                    "name": f"{symbol} - TEST EXCHANGE",
                     "category": "commercial",
                     "measure": measure,
                     "value": value,
