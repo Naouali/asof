@@ -115,6 +115,24 @@ a breach stopping the run.
 
 A 30-year, 3,000-name backtest with full costs runs in about 7 seconds.
 
+## Validating a result
+
+Every backtest records itself as a trial, and the count deflates the Sharpe it
+reports. There is no way to search quietly and still quote a deflated number.
+
+```bash
+quantlab validate trials              # what the platform has counted
+quantlab validate trials momentum     # the individual configurations
+quantlab validate library             # empirical-Bayes shrinkage across families
+quantlab validate sharpe 1.8 --years 10 --trials 300   # deflate a published number
+```
+
+A Sharpe of 1.5 over five years is worth 1.000 after one trial, 0.155 after two
+hundred, and 0.003 after ten thousand. That is the entire point.
+
+**No statistic here detects survivorship bias.** The red-team suite asserts it, so
+that a clean validation report is never mistaken for evidence of a clean universe.
+
 ## Layout
 
 ```
@@ -142,12 +160,14 @@ number you might act on lives in `src/` with a test.
 
 ## Status
 
-Milestones 1–4 of 12 complete: repository skeleton, Docker stack and CI; the data
+Milestones 1–5 of 12 complete: repository skeleton, Docker stack and CI; the data
 layer — parquet lake, point-in-time snapshots, trading calendars and eight fetchers
 across Yahoo, Binance and FRED/ALFRED; the cost models — square-root impact,
 Almgren-Chriss scheduling, spread estimation with its bias problem documented,
-financing and borrow, and the capacity calculator; and the vectorised backtest
-engine with its accounting identities enforced every bar.
+financing and borrow, and the capacity calculator; the vectorised backtest engine
+with its accounting identities enforced every bar; and the validation module —
+purged cross-validation, deflated Sharpe with an automatic trial counter, PBO,
+empirical-Bayes shrinkage, and a red-team suite of deliberately broken strategies.
 
 Commands whose implementation lands in a later milestone exit non-zero naming that
 milestone, rather than returning an empty result that could be mistaken for a

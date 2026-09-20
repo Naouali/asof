@@ -162,6 +162,24 @@ installation. **The literature's selection bias is not correctable by any statis
 A useful working prior: **live Sharpe ≈ 0.5 × backtest Sharpe**, and the platform
 displays the haircuts that get you there.
 
+### No statistic here detects survivorship bias
+
+This is worth stating on its own, because a clean validation report invites exactly
+the wrong inference. A strategy run on a universe assembled from instruments that
+happened to survive produces a real return series from a real edge — the edge of
+having excluded the failures in advance. There is nothing statistically anomalous
+about it, so the probabilistic Sharpe, the deflation and PBO all **pass** it.
+
+The red-team suite asserts this rather than hiding it
+(`test_survivorship_bias_is_invisible_to_every_statistic_here`). Survivorship is
+caught in the data layer — historical constituent lists, retained delisted tickers,
+the delisting count on every backtest result — or it is not caught at all.
+
+### Deleting the trial registry resets your trial count
+
+It lives in a JSONL file in the state directory and is deliberately awkward to
+reduce, but it is a file. The only person fooled by emptying it is you.
+
 ## 4. The only honest out-of-sample test is forward time
 
 Everything else — walk-forward, purged CV, held-out samples — reuses data you have

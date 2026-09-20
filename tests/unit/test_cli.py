@@ -302,6 +302,99 @@ def test_backtest_runs_end_to_end(tmp_path: Path, store: object) -> None:
     )
     result = runner.invoke(app, ["backtest", "--config", str(config)])
     assert result.exit_code == 0, result.output
-    assert "UNDEFLATED" in result.stdout
+    assert "deflated" in result.stdout, "every reported Sharpe carries its deflation"
     assert "reconciled" in result.stdout
     assert "point-in-time as of 2024-04-01" in result.stdout
+
+
+def test_validate_trials_on_an_empty_registry() -> None:
+    result = runner.invoke(app, ["validate", "trials"])
+    assert result.exit_code == 0
+    assert "no trials recorded" in result.stdout
+
+
+def test_validate_trials_lists_families(settings: Settings) -> None:
+    from quantlab.validation import Trial, TrialRegistry, config_fingerprint
+
+    registry = TrialRegistry(settings.layout.state)
+    for index in range(4):
+        registry.record(
+            Trial(
+                family="momentum",
+                config_hash=config_fingerprint(variant=index),
+                name=f"mom-{index}",
+                sharpe_annual=0.4 + index * 0.2,
+                observations=1260,
+            )
+        )
+    result = runner.invoke(app, ["validate", "trials"])
+    assert result.exit_code == 0
+    assert "momentum" in result.stdout
+    assert "deflation bar" in result.stdout
+
+    detail = runner.invoke(app, ["validate", "trials", "momentum"])
+    assert detail.exit_code == 0
+    assert "mom-3" in detail.stdout
+
+
+def test_validate_trials_for_an_unknown_family_fails_loudly(settings: Settings) -> None:
+    from quantlab.validation import Trial, TrialRegistry, config_fingerprint
+
+    TrialRegistry(settings.layout.state).record(
+        Trial(
+            family="a",
+            config_hash=config_fingerprint(x=1),
+            name="a",
+            sharpe_annual=1.0,
+            observations=100,
+        )
+    )
+    result = runner.invoke(app, ["validate", "trials", "nope"])
+    assert result.exit_code == 2
+    assert "known families" in result.output
+
+
+def test_validate_sharpe_survives_with_one_trial() -> None:
+    result = runner.invoke(app, ["validate", "sharpe", "1.8", "--years", "10"])
+    assert result.exit_code == 0
+    assert "survives deflation" in result.stdout
+
+
+def test_validate_sharpe_fails_after_a_wide_search() -> None:
+    """The same number, deflated by the search that found it."""
+    result = runner.invoke(app, ["validate", "sharpe", "1.8", "--years", "10", "--trials", "300"])
+    assert result.exit_code == 1
+    assert "does not survive" in result.output
+    assert "luckiest member" in result.output
+
+
+def test_validate_library_needs_enough_families(settings: Settings) -> None:
+    """Below five signals the adjustment says more about your sample size than
+    about your library."""
+    result = runner.invoke(app, ["validate", "library"])
+    assert result.exit_code == 2
+    assert "at least 5" in result.output
+
+
+def test_validate_library_reports_the_shrinkage(settings: Settings) -> None:
+    import numpy as np
+
+    from quantlab.validation import Trial, TrialRegistry, config_fingerprint
+
+    registry = TrialRegistry(settings.layout.state)
+    rng = np.random.default_rng(0)
+    for index in range(30):
+        registry.record(
+            Trial(
+                family=f"family-{index}",
+                config_hash=config_fingerprint(x=index),
+                name=f"sig-{index}",
+                # t = Sharpe * sqrt(years); 5 years, so these are t/sqrt(5).
+                sharpe_annual=float(rng.normal(0, 1) / np.sqrt(5)),
+                observations=1260,
+            )
+        )
+    result = runner.invoke(app, ["validate", "library"])
+    assert result.exit_code == 0
+    assert "Var(t)" in result.stdout
+    assert "shrunk t" in result.stdout

@@ -150,7 +150,11 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --strict-config"
+# Slow tests are excluded by default. The throughput benchmark measures wall
+# clock, and running it alongside six hundred other tests measures the machine's
+# memory pressure rather than the engine. Run it deliberately with `make bench`,
+# which is also what CI does, in its own job.
+addopts = "-ra --strict-markers --strict-config -m 'not slow'"
 timeout = 300
 markers = [
   "integration: end-to-end tests that touch the compose stack or the data lake",

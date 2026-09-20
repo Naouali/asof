@@ -145,7 +145,10 @@ def run() -> BacktestResult:
             use_asset_class_defaults=False,
         ),
     )
-    return engine.run(panel, weights, name="golden-reversal")
+    # Not recorded as a trial: this fixture is re-run on every test invocation and
+    # would otherwise inflate the operator's own trial count with a strategy they
+    # never searched over.
+    return engine.run(panel, weights, name="golden-reversal", record_trial=False)
 
 
 def main() -> int:

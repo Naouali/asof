@@ -351,12 +351,22 @@ def test_books_balance_across_a_realistic_run() -> None:
 
 
 def test_summary_never_reports_a_bare_sharpe() -> None:
-    """Spec section 13: no Sharpe without its deflated counterpart and trial count."""
+    """Spec section 13: no Sharpe without its deflated counterpart and trial count.
+
+    Enforced two ways. The raw statistic is named ``sharpe_undeflated`` so it
+    cannot be misread, and the summary carries the deflated value and the trial
+    count that produced it.
+    """
     panel = panel_from({"A": [100.0 * (1.001**i) for i in range(50)]})
-    result = VectorisedBacktest(FREE, costless()).run(panel, weights_at([0], {"A": 1.0}))
-    assert "UNDEFLATED" in result.summary()
+    result = VectorisedBacktest(FREE, costless()).run(
+        panel, weights_at([0], {"A": 1.0}), family="summary-check"
+    )
+    summary = result.summary()
+    assert "deflated" in summary
+    assert "trial(s)" in summary
     assert not hasattr(result.stats, "sharpe")
     assert hasattr(result.stats, "sharpe_undeflated")
+    assert result.evidence is not None
 
 
 def test_cost_decomposition_is_reported_component_by_component() -> None:

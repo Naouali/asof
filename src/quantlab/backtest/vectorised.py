@@ -117,8 +117,23 @@ class VectorisedBacktest:
         weights: pl.DataFrame,
         *,
         name: str = "strategy",
+        family: str | None = None,
+        record_trial: bool = True,
     ) -> BacktestResult:
-        """Execute the weight schedule and return the full result."""
+        """Execute the weight schedule and return the full result.
+
+        Every run records itself as a trial against ``family`` (defaulting to
+        ``name``), and the resulting count feeds the deflated Sharpe on the result.
+        Spec section 7 is explicit that this must be automatic: nobody remembers
+        that they tried forty lookbacks last Tuesday, and the deflation is only as
+        honest as the count behind it.
+
+        Sweeping a parameter should keep one ``family`` and vary the config, so the
+        forty variations count as forty trials rather than as forty families of one.
+        ``record_trial=False`` exists for re-running a known configuration for
+        reporting; it does not create a way to search without being counted,
+        because an unrecorded run also gets no deflated Sharpe.
+        """
         config = self.config
         if panel.timing is not config.execution:
             raise ValueError(
@@ -280,6 +295,8 @@ class VectorisedBacktest:
 
         return BacktestResult.build(
             name=name,
+            family=family or name,
+            record_trial=record_trial,
             panel=panel,
             config=config,
             equity=equity,

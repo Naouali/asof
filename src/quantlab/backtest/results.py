@@ -15,6 +15,7 @@ different short book.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +25,7 @@ import polars as pl
 from quantlab.backtest.accounting import ReconciliationReport
 from quantlab.costs.base import BPS
 from quantlab.logging import get_logger
+from quantlab.validation.statistics import SharpeEvidence
 
 if TYPE_CHECKING:  # pragma: no cover
     from quantlab.backtest.panel import Panel
@@ -102,6 +104,11 @@ class BacktestResult:
     contaminated: bool
     #: Facts about the inputs that any reader of the numbers needs.
     data_quality: dict[str, Any]
+    #: The Sharpe with its trial count and deflation attached. Spec section 13
+    #: forbids reporting one without the other, so it travels with the result
+    #: rather than being available on request.
+    evidence: SharpeEvidence | None = None
+    family: str = ""
 
     # ------------------------------------------------------------------ build --
     @classmethod
@@ -110,6 +117,8 @@ class BacktestResult:
         *,
         name: str,
         panel: Panel,
+        family: str = "",
+        record_trial: bool = False,
         config: BacktestConfig,
         equity: np.ndarray,
         gross_pnl: np.ndarray,
@@ -188,6 +197,16 @@ class BacktestResult:
                 reason="SAME_CLOSE execution trades at the close that produced the signal",
             )
 
+        evidence = _record_and_deflate(
+            name=name,
+            family=family or name,
+            config=config,
+            stats=stats,
+            curve=curve,
+            panel=panel,
+            record_trial=record_trial,
+        )
+
         return cls(
             name=name,
             curve=curve,
@@ -196,6 +215,8 @@ class BacktestResult:
             reconciliation=reconciliation,
             contaminated=config.is_contaminated,
             data_quality=data_quality,
+            evidence=evidence,
+            family=family or name,
         )
 
     # ------------------------------------------------------------------ views --
@@ -229,9 +250,26 @@ class BacktestResult:
             f"{self.name}: {stats.years:.1f}y, {stats.bars:,} bars",
             f"  CAGR {stats.cagr:+.2%}   vol {stats.volatility_annual:.2%}   "
             f"max DD {stats.max_drawdown:.2%} ({stats.max_drawdown_days}d)",
-            f"  Sharpe {stats.sharpe_undeflated:.2f} NET / "
-            f"{stats.sharpe_gross_undeflated:.2f} gross  "
-            f"[UNDEFLATED -- no trial count; see Milestone 5]",
+        ]
+        if self.evidence is not None:
+            verdict = "survives" if self.evidence.survives_deflation else "DOES NOT SURVIVE"
+            lines.append(
+                f"  Sharpe {stats.sharpe_undeflated:.2f} net / "
+                f"{stats.sharpe_gross_undeflated:.2f} gross / "
+                f"{self.evidence.haircut_annual:.2f} after haircuts"
+            )
+            lines.append(
+                f"  deflated {self.evidence.deflated:.3f} over "
+                f"{self.evidence.trials} trial(s) in family '{self.family}' "
+                f"-- {verdict} deflation"
+            )
+        else:
+            lines.append(
+                f"  Sharpe {stats.sharpe_undeflated:.2f} net / "
+                f"{stats.sharpe_gross_undeflated:.2f} gross  "
+                f"[UNDEFLATED -- this run was not recorded as a trial]"
+            )
+        lines += [
             f"  turnover {stats.turnover_annual:.1%}/yr   "
             f"cost drag {stats.cost_drag_bps_annual:.0f} bp/yr",
             f"  {self.reconciliation.describe()}",
@@ -248,6 +286,102 @@ class BacktestResult:
                 f"{self.data_quality['delisting_return_applied']:+.0%} applied on exit"
             )
         return "\n".join(lines)
+
+
+def _record_and_deflate(
+    *,
+    name: str,
+    family: str,
+    config: BacktestConfig,
+    stats: PerformanceStats,
+    curve: pl.DataFrame,
+    panel: Panel,
+    record_trial: bool,
+) -> SharpeEvidence | None:
+    """Record this run as a trial and deflate its Sharpe by the family's count.
+
+    The fingerprint covers the engine settings, the sample window and the
+    instrument set, so changing any of them is a new trial. It deliberately does
+    *not* cover the weights file's contents: two different signals with the same
+    engine settings are the same trial only if they are literally the same run,
+    and the weight fingerprint is what distinguishes them.
+    """
+    from quantlab.config import get_settings
+    from quantlab.validation.registry import Trial, TrialRegistry, config_fingerprint
+    from quantlab.validation.statistics import (
+        HaircutSchedule,
+        SharpeEvidence,
+        deflated_sharpe_ratio,
+        expected_max_sharpe,
+        probabilistic_sharpe_ratio,
+    )
+
+    settings = get_settings()
+    registry = TrialRegistry(settings.layout.state)
+
+    fingerprint = config_fingerprint(
+        name=name,
+        initial_equity=config.initial_equity,
+        execution=config.execution.value,
+        max_staleness_bars=config.staleness.max_bars,
+        delisting_return=config.delisting_return,
+        borrow_bps_annual=config.borrow_bps_annual,
+        financing_bps_annual=config.financing_bps_annual,
+        execution_horizon_days=config.execution_horizon_days,
+        commission_bps=config.commission_bps,
+        symbols=list(panel.symbols),
+        first_bar=panel.dates[0],
+        last_bar=panel.dates[-1],
+    )
+
+    if record_trial:
+        registry.record(
+            Trial(
+                family=family,
+                config_hash=fingerprint,
+                name=name,
+                sharpe_annual=stats.sharpe_undeflated,
+                observations=stats.bars,
+                skewness=stats.skewness,
+                excess_kurtosis=stats.excess_kurtosis,
+                metadata={"bars": stats.bars, "years": round(stats.years, 3)},
+            )
+        )
+
+    trials = registry.family(family)
+    count = max(1, trials.count)
+    observations = max(2, stats.bars - 1)
+    bars_per_year = observations / stats.years if stats.years > 0 else 252.0
+    per_bar = stats.sharpe_undeflated / math.sqrt(bars_per_year) if bars_per_year > 0 else 0.0
+    variance = trials.sharpe_variance(observations)
+    schedule = HaircutSchedule()
+
+    return SharpeEvidence(
+        gross_annual=stats.sharpe_gross_undeflated,
+        net_annual=stats.sharpe_undeflated,
+        haircut_annual=schedule.apply(stats.sharpe_undeflated),
+        observations=observations,
+        trials=count,
+        sharpe_variance=variance,
+        skewness=stats.skewness,
+        excess_kurtosis=stats.excess_kurtosis,
+        probabilistic=probabilistic_sharpe_ratio(
+            per_bar,
+            observations=observations,
+            skewness=stats.skewness,
+            excess_kurtosis=stats.excess_kurtosis,
+        ),
+        deflated=deflated_sharpe_ratio(
+            per_bar,
+            observations=observations,
+            trials=count,
+            sharpe_variance=variance,
+            skewness=stats.skewness,
+            excess_kurtosis=stats.excess_kurtosis,
+        ),
+        expected_max_from_search=expected_max_sharpe(count, variance),
+        haircuts=schedule,
+    )
 
 
 def _compute_stats(panel: Panel, config: BacktestConfig, curve: pl.DataFrame) -> PerformanceStats:

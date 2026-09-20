@@ -10,6 +10,7 @@ mistaken for "no data".
 
 from __future__ import annotations
 
+import math
 import signal
 import sys
 import time
@@ -28,6 +29,7 @@ from quantlab.data.catalogue import SOURCES, get_source
 from quantlab.health import Status, run_checks, source_availability
 from quantlab.logging import configure_logging, get_logger
 from quantlab.runtime import Heartbeat, read_heartbeat
+from quantlab.validation import expected_max_sharpe
 
 app = typer.Typer(
     name="quantlab",
@@ -42,10 +44,14 @@ data_app = typer.Typer(name="data", help="Data lake and catalogue.", no_args_is_
 costs_app = typer.Typer(
     name="costs", help="Transaction costs, impact and capacity.", no_args_is_help=True
 )
+validate_app = typer.Typer(
+    name="validate", help="Overfitting statistics and the trial registry.", no_args_is_help=True
+)
 app.add_typer(worker_app)
 app.add_typer(scheduler_app)
 app.add_typer(data_app)
 app.add_typer(costs_app)
+app.add_typer(validate_app)
 
 console = Console()
 err_console = Console(stderr=True)
@@ -531,6 +537,194 @@ def costs_capacity(
         "[dim]Equal-weighted homogeneous universes overstate capacity: a real "
         "universe's thin names cost disproportionately more.[/dim]"
     )
+
+
+@validate_app.command("trials")
+def validate_trials(
+    family: Annotated[
+        str | None, typer.Argument(help="Show the individual trials in one family.")
+    ] = None,
+) -> None:
+    """Show what the platform has counted.
+
+    Every backtest records itself here, and this count is what deflates your
+    Sharpe ratios. Spec section 7: manual honesty about trial counts does not work,
+    so the platform counts whether you want it to or not.
+    """
+    from quantlab.validation import TrialRegistry
+
+    registry = TrialRegistry(get_settings().layout.state)
+    sets = registry.summary()
+    if not sets:
+        console.print(
+            "[yellow]no trials recorded yet[/yellow] -- run a backtest and it will record itself"
+        )
+        return
+
+    if family is not None:
+        trial_set = registry.family(family)
+        if trial_set.count == 0:
+            err_console.print(
+                f"[red]no trials in family {family!r}[/red]; known families: "
+                f"{', '.join(registry.families())}"
+            )
+            raise typer.Exit(code=2)
+        table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+        for column in ("config", "name", "Sharpe", "bars", "recorded"):
+            table.add_column(column, justify="right" if column in {"Sharpe", "bars"} else "left")
+        for item in sorted(trial_set.trials, key=lambda t: -t.sharpe_annual):
+            table.add_row(
+                item.config_hash,
+                item.name,
+                f"{item.sharpe_annual:.2f}",
+                f"{item.observations:,}",
+                f"{item.recorded_at:%Y-%m-%d %H:%M}",
+            )
+        console.print(table)
+        console.print(f"\n[dim]{trial_set.describe()}[/dim]")
+        return
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("family")
+    table.add_column("trials", justify="right")
+    table.add_column("best Sharpe", justify="right")
+    table.add_column("deflation bar", justify="right")
+    for trial_set in sorted(sets, key=lambda s: -s.count):
+        best = trial_set.best
+        bar = expected_max_sharpe(max(1, trial_set.count), trial_set.sharpe_variance()) * math.sqrt(
+            252
+        )
+        table.add_row(
+            trial_set.family,
+            str(trial_set.count),
+            f"{best.sharpe_annual:.2f}" if best else "-",
+            f"{bar:.2f}",
+        )
+    console.print(table)
+    console.print(
+        "[dim]`deflation bar` is the annualised Sharpe the best of that many "
+        "worthless strategies would be expected to show. Beating it is the minimum "
+        "for a result to mean anything.[/dim]"
+    )
+
+
+@validate_app.command("library")
+def validate_library(
+    min_years: Annotated[
+        float, typer.Option("--min-years", help="Ignore families with a shorter sample.")
+    ] = 1.0,
+) -> None:
+    """Empirical-Bayes luck adjustment across every signal family.
+
+    The most uncomfortable number the platform produces. If the cross-sectional
+    variance of your t-statistics is near 1, the spread of your results is exactly
+    what chance produces and the correct conclusion is that nothing has been found.
+    """
+    from quantlab.validation import TrialRegistry, luck_adjust, t_statistic
+
+    registry = TrialRegistry(get_settings().layout.state)
+    statistics: dict[str, float] = {}
+    for trial_set in registry.summary():
+        best = trial_set.best
+        if best is None:
+            continue
+        years = best.observations / 252.0
+        if years < min_years:
+            continue
+        statistics[trial_set.family] = t_statistic(best.sharpe_annual, years)
+
+    if len(statistics) < 5:
+        err_console.print(
+            f"[yellow]only {len(statistics)} families with at least {min_years} "
+            "year(s) of data.[/yellow] The luck adjustment needs at least 5 to say "
+            "anything; below that it tells you about your sample size, not your "
+            "library. Build more signals first."
+        )
+        raise typer.Exit(code=2)
+
+    adjustment = luck_adjust(statistics)
+    console.print(adjustment.describe())
+    console.print()
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("family")
+    table.add_column("raw t", justify="right")
+    table.add_column("shrunk t", justify="right")
+    table.add_column("survives", justify="right")
+    for name, raw, shrunk in adjustment.ranked():
+        survives = abs(shrunk) >= 2.0
+        table.add_row(
+            name,
+            f"{raw:.2f}",
+            f"{shrunk:.2f}",
+            "[green]yes[/green]" if survives else "[red]no[/red]",
+        )
+    console.print(table)
+
+
+@validate_app.command("sharpe")
+def validate_sharpe(
+    sharpe: Annotated[float, typer.Argument(help="Observed annualised Sharpe ratio.")],
+    years: Annotated[float, typer.Option("--years", help="Length of the sample.")],
+    trials: Annotated[int, typer.Option("--trials", help="Configurations tried to find it.")] = 1,
+    skew: Annotated[float, typer.Option("--skew", help="Return skewness.")] = 0.0,
+    kurtosis: Annotated[float, typer.Option("--kurtosis", help="Excess kurtosis.")] = 0.0,
+    trial_sharpe_sd: Annotated[
+        float, typer.Option("--trial-sd", help="Annualised SD of the trials' Sharpes.")
+    ] = 0.7,
+) -> None:
+    """Deflate a Sharpe ratio by hand, for a result that came from elsewhere.
+
+    For a published number, or a backtest run outside the platform. Runs inside it
+    are deflated automatically against the recorded trial count.
+    """
+    from quantlab.validation import (
+        HaircutSchedule,
+        deflated_sharpe_ratio,
+        minimum_backtest_length,
+        probabilistic_sharpe_ratio,
+    )
+
+    bars = max(2, int(years * 252))
+    per_bar = sharpe / math.sqrt(252)
+    variance = (trial_sharpe_sd / math.sqrt(252)) ** 2
+
+    probabilistic = probabilistic_sharpe_ratio(
+        per_bar, observations=bars, skewness=skew, excess_kurtosis=kurtosis
+    )
+    deflated = deflated_sharpe_ratio(
+        per_bar,
+        observations=bars,
+        trials=trials,
+        sharpe_variance=variance,
+        skewness=skew,
+        excess_kurtosis=kurtosis,
+    )
+    bar = expected_max_sharpe(trials, variance) * math.sqrt(252)
+    needed = minimum_backtest_length(abs(sharpe) or 1e-6, trials)
+    haircuts = HaircutSchedule()
+
+    table = Table(show_header=False, box=None, pad_edge=False)
+    table.add_column("", style="bold")
+    table.add_column("")
+    table.add_row("observed Sharpe", f"{sharpe:.2f} over {years:.1f} years")
+    table.add_row("after haircuts", f"{haircuts.apply(sharpe):.2f}  ({haircuts.describe()})")
+    table.add_row("trials", f"{trials}")
+    table.add_row("deflation bar", f"{bar:.2f} annualised")
+    table.add_row("probabilistic Sharpe", f"{probabilistic:.3f}")
+    table.add_row("deflated Sharpe", f"{deflated:.3f}")
+    table.add_row("sample needed", f"{needed:.1f} years")
+    console.print(table)
+
+    if deflated >= 0.95:
+        console.print("\n[green]survives deflation at the 0.95 threshold.[/green]")
+    else:
+        console.print(
+            f"\n[red]does not survive deflation.[/red] After {trials} trial(s), a "
+            f"Sharpe of {sharpe:.2f} over {years:.1f} years is consistent with having "
+            "found the luckiest member of the search."
+        )
+        raise typer.Exit(code=1)
 
 
 @app.command()

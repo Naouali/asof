@@ -9,7 +9,7 @@ and committed.
 | 2 | Data layer: store, PIT machinery, calendars, FRED + Stooq/Yahoo + Binance | **complete** |
 | 3 | Cost models: square-root impact, spread, financing, capacity calculator | **complete** |
 | 4 | Vectorised backtest engine with enforced accounting identities | **complete** |
-| 5 | Validation: CPCV, DSR with automatic trial counting, PBO, empirical-Bayes shrinkage | not started |
+| 5 | Validation: CPCV, DSR with automatic trial counting, PBO, empirical-Bayes shrinkage | **complete** |
 | 6 | Tier 1 signals: time-series momentum, cross-asset carry, equity profitability | not started |
 | 7 | Portfolio construction: vol targeting, risk parity, turnover-aware optimisation, factor risk model | not started |
 | 8 | Reporting: tearsheets with capacity and validation statistics | not started |
@@ -178,6 +178,43 @@ arriving on the first strategy the platform ever ran.
 **Tests** — 90 in the backtest suite, 97% coverage. Includes Hypothesis property
 tests asserting the accounting identity holds for arbitrary input sequences, and a
 throughput test that fails if the ten-second budget is exceeded.
+
+## Milestone 5 — what was delivered
+
+**The automatic trial counter.** Every backtest records itself; the count of
+distinct configurations per family feeds the deflated Sharpe on the result. Spec
+section 7 is explicit that this cannot rely on the operator remembering, so it does
+not. Opting out of recording also opts out of getting a deflated number.
+
+**Overfitting statistics.** Probabilistic Sharpe (corrects for the sample),
+deflated Sharpe (for the search), PBO by combinatorially symmetric cross-validation
+(for the selection rule), and minimum backtest length. Demonstrated: a Sharpe of
+1.5 over five years goes from 1.000 at one trial to 0.155 at two hundred to 0.003
+at ten thousand.
+
+**Cross-validation that does not leak.** Purged k-fold with embargo, combinatorial
+purged CV producing a distribution of paths, and walk-forward. A bug found here:
+purging over the span from the first to the last test index deletes the entire
+sample when the test groups are far apart, which combinatorial CV does routinely.
+
+**Empirical-Bayes luck adjustment.** `shrinkage = 1 − 1/Var(t)` across the signal
+library. On 200 pure-noise signals it returns 0.00 with the verdict *"the
+dispersion of your results is what pure chance produces… nothing has been found."*
+
+**The red-team suite** — 11 tests over four deliberately broken strategies. Three
+are rejected. The fourth documents a limit: **survivorship bias is invisible to
+every statistic in this module**, and the test asserts that the framework passes a
+survivorship-biased strategy, so nobody mistakes a clean validation report for
+evidence of a clean universe.
+
+**Sharpe ratios are now never reported bare.** Every backtest summary carries the
+deflated value and the trial count that produced it.
+
+**Tests** — 101 in the validation suite, 92% coverage. Two unit bugs caught by
+them: `minimum_backtest_length` was mixing per-observation and annualised Sharpe
+units (understating the requirement by a factor of 252), and the CPCV path
+reassembly double-counted observations when a split spanned groups belonging to
+different paths.
 
 ## Not yet verified
 
