@@ -283,9 +283,10 @@ number you might act on lives in `src/` with a test.
 
 ## Documentation
 
+- [docs/LIMITATIONS.md](docs/LIMITATIONS.md) — **read this first.** What the platform cannot tell you
+- [docs/ADDING_A_SIGNAL.md](docs/ADDING_A_SIGNAL.md) — how to add a signal, and why the bureaucracy exists
 - [docs/DATA_CATALOGUE.md](docs/DATA_CATALOGUE.md) — every source and every caveat
 - [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md) — every conservative choice made under ambiguity
-- [docs/LIMITATIONS.md](docs/LIMITATIONS.md) — what this platform cannot tell you
 - [docs/MILESTONES.md](docs/MILESTONES.md) — build order and current status
 
 ## Status

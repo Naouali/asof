@@ -16,7 +16,7 @@ and committed.
 | 9 | Remaining data sources: SEC EDGAR, CFTC COT, EIA, academic factors, options collector | **complete** |
 | 10 | Event-driven engine and Tier 2 signals | **complete** |
 | 11 | Paper trading loop, dashboard, decay monitor | **complete** |
-| 12 | Documentation: data catalogue, how-to-add-a-signal, LIMITATIONS.md | in progress |
+| 12 | Documentation: data catalogue, how-to-add-a-signal, LIMITATIONS.md | **complete** |
 
 ## Milestone 1 — what was delivered
 
@@ -580,7 +580,49 @@ unimplemented ones exited non-zero naming the milestone that would deliver them;
 paper trading was the last. The test that policed them now asserts no stub
 remains.
 
-## Not yet verified
+## Milestone 12 — what was delivered
+
+Mostly restructuring and correction rather than new prose. `LIMITATIONS.md` had
+grown a section per milestone, which is build order rather than reader order, so
+it is now Part I — what constrains every result — and Part II — what constrains
+each component. `DATA_CATALOGUE.md` is generated and was already current.
+
+**`ADDING_A_SIGNAL.md`** is new: the full process, organised around the three
+mistakes that do not look like mistakes and cost real time in this build. A
+reversed sign, which backtests as a confident slow loss rather than as an error.
+A mixed reporting basis, which divided nine-month revenue by an instantaneous
+balance sheet. A timestamp join across datasets, which appears to work while
+regressing one series against another shifted by every missing session.
+
+### Two documentation bugs, and one of them was serious
+
+**Section 5 was overselling the platform.** It claimed the event-driven engine
+"models order types, partial fills, slippage, latency and rejects". Written in
+Milestone 1 as a plan; the engine delivered in Milestone 10 models none of them.
+The document whose entire purpose is to stop this platform overselling itself was
+the thing doing the overselling, for eleven milestones. It now says what the
+engine actually does — sequencing and path dependence, not fill fidelity — and a
+test asserts the corrected wording stays.
+
+**Section 7's signal inventory had drifted.** It said six Tier 1 signals were
+implemented and two could run. By Milestone 11 there were eight signals across
+three tiers and six of them ran — EDGAR, a FRED key and the Milestone 9 sources
+had each unblocked one without the document noticing. A count that drifts is
+worse than no count, because a reader will trust it, so a test now compares the
+inventory against the signal registry and fails when they disagree.
+
+### Final state
+
+| | |
+| --- | --- |
+| Tests | 1,205 passing, 4 slow, 3 skipped without a Docker daemon |
+| Coverage | 89.95% against an 85% gate |
+| Source files | 98 |
+| Signals | 8 implemented, 6 runnable on free data |
+| Data sources | 29 catalogued, 24 with a working fetcher |
+| Assumptions recorded | 142, each with the reason it was the conservative choice |
+
+## Still unverified
 
 **Docker.** The `make up` acceptance criterion has still **not** been executed: the
 development machine has the Docker CLI but no daemon. The compose file, Dockerfiles
@@ -593,6 +635,19 @@ not a number fitted to real fills. The models are correct; whether they are
 *calibrated* for your execution is unknown and unknowable from free data. The
 spread estimators have been validated against simulation, where the answer is
 known, but not against live equity quotes, which are not free.
+
+**EIA.** No free EIA key was configured, so the fetcher has never run against
+the live API. Its parser is tested against a fixture built from EIA's documented
+v2 envelope — which asserts it handles the documented shape, not the actual one.
+The release-date arithmetic, where the look-ahead risk actually lives, needs no
+key and is fully tested. This is the same debt FRED carried until a key arrived,
+and it is paid off the same way.
+
+**Live execution.** Out of scope by instruction (spec section 1), so the gap
+between the paper loop and a real venue is not merely unverified, it is
+unmodelled. See `quantlab/paper/broker.py`.
+
+## Verified since
 
 **FRED and ALFRED — now verified (2026-09-20).** A key was configured and both
 fetchers were run against the live API: 115,314 FRED rows and 28,075 ALFRED rows.

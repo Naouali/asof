@@ -69,3 +69,13 @@ trades* as data. A live adapter would consume that same interface and add order
 placement, fill reconciliation and position synchronisation against the broker's
 record of truth. Nothing above that boundary should need to change — and nothing
 above it should ever import a broker SDK, which a test currently enforces.
+
+## Where to go next
+
+- [ADDING_A_SIGNAL.md](ADDING_A_SIGNAL.md) — the full process for a new signal,
+  including the three mistakes that do not look like mistakes: a reversed sign,
+  a mixed reporting basis, and a timestamp join that appears to work.
+- [LIMITATIONS.md](LIMITATIONS.md) — what constrains every result, then what
+  constrains each component.
+- [ASSUMPTIONS.md](ASSUMPTIONS.md) — every choice made under ambiguity, and why
+  it was the conservative one. Numbered, so a decision can be cited.

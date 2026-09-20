@@ -98,3 +98,61 @@ def test_makefile_exposes_every_target_the_spec_requires() -> None:
         "clean-data",
     ):
         assert f"\n{target}:" in text, f"Makefile has no `{target}` target"
+
+
+# ----------------------------------------------------------------------------------
+# Keeping the documentation honest
+# ----------------------------------------------------------------------------------
+def test_limitations_lists_every_documented_component() -> None:
+    """Part II gained a section per subsystem as each was built. A component
+    with no entry is one whose limitations were never written down."""
+    text = (REPO / "docs" / "LIMITATIONS.md").read_text(encoding="utf-8")
+    for component in (
+        "Portfolio construction and risk",
+        "Tearsheets",
+        "Option chains",
+        "The event-driven engine",
+        "Paper trading",
+    ):
+        assert f"### {component}" in text, component
+
+
+def test_the_signal_inventory_in_limitations_matches_the_registry() -> None:
+    """Section 7 claimed for several milestones that only two Tier 1 signals
+    could run. EDGAR, FRED and the Milestone 9 sources changed that and the
+    document did not notice. A count that drifts is worse than no count: it is a
+    number a reader will trust."""
+    from quantlab.signals import SIGNAL_REGISTRY, load_all_signals
+
+    load_all_signals()
+    text = (REPO / "docs" / "LIMITATIONS.md").read_text(encoding="utf-8")
+    section = text[text.index("## 7.") : text.index("## 8.")]
+
+    for name in SIGNAL_REGISTRY:
+        assert f"`{name}`" in section, f"{name} is missing from the signal inventory"
+
+    counted = section.count("| Runs") + section.count("| **Blocked.**")
+    assert counted == len(SIGNAL_REGISTRY), (
+        f"the inventory lists {counted} signals but {len(SIGNAL_REGISTRY)} are registered"
+    )
+
+
+def test_limitations_does_not_claim_unbuilt_execution_modelling() -> None:
+    """An early draft claimed the event-driven engine modelled order types,
+    partial fills, latency and rejects. It models none of them, and the document
+    whose job is to prevent overselling was doing the overselling."""
+    text = (REPO / "docs" / "LIMITATIONS.md").read_text(encoding="utf-8")
+    section = text[text.index("## 5.") : text.index("## 6.")]
+
+    assert "does **not** add order types, partial fills, latency or rejects" in section
+    assert "sequencing" in section
+
+
+def test_the_signal_guide_covers_the_mistakes_that_do_not_look_like_mistakes() -> None:
+    """Each of these cost real time in this build, and none of them raises."""
+    guide = (REPO / "docs" / "ADDING_A_SIGNAL.md").read_text(encoding="utf-8")
+
+    assert "reversed sign" in guide
+    assert "reporting basis" in guide
+    assert "calendar date" in guide
+    assert "SignalUnavailableError" in guide

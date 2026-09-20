@@ -6,6 +6,31 @@ produces.
 This document is deliberately blunt. A research platform that oversells itself is
 the mechanism by which backtests destroy capital.
 
+## Contents
+
+**Part I — what constrains every result**
+
+1. [The data is free, and you get what you pay for](#1-the-data-is-free-and-you-get-what-you-pay-for)
+2. [Costs are modelled, not observed](#2-costs-are-modelled-not-observed)
+3. [Validation bounds overfitting, it does not eliminate it](#3-validation-bounds-overfitting-it-does-not-eliminate-it)
+4. [The only honest out-of-sample test is forward time](#4-the-only-honest-out-of-sample-test-is-forward-time)
+5. [Execution realism has a ceiling](#5-execution-realism-has-a-ceiling)
+6. [No live trading](#6-no-live-trading)
+7. [Part of the signal set still cannot run on free data](#7-part-of-the-signal-set-still-cannot-run-on-free-data)
+8. [What the vectorised engine does not model](#8-what-the-vectorised-engine-does-not-model)
+9. [Capacity is a ceiling, not a plan](#9-capacity-is-a-ceiling-not-a-plan)
+10. [The point-in-time guarantee has a hard edge](#10-the-point-in-time-guarantee-has-a-hard-edge)
+11. [What "reproducible" means here](#11-what-reproducible-means-here)
+
+**Part II — limitations of individual components**
+
+Portfolio construction · Tearsheets · Positioning and fundamentals · Volatility
+indices and the anomaly catalogue · Option chains · Energy inventories · The
+event-driven engine · Tier 2 signals · Paper trading
+
+
+# Part I — what constrains every result
+
 ## 1. The data is free, and you get what you pay for
 
 ### Stooq is blocked, so Yahoo's adjustments are unverified
@@ -184,40 +209,78 @@ reduce, but it is a file. The only person fooled by emptying it is you.
 
 Everything else — walk-forward, purged CV, held-out samples — reuses data you have
 already seen. The paper-trading loop is the single most valuable component in this
-system, and it is the slowest to give you an answer. There is no shortcut.
+system, and it is the slowest to give you an answer. There is no shortcut, and the
+arithmetic is worse than most people expect.
+
+The decay monitor states it concretely. The ETF momentum book running here has
+eight fortnightly observations, a live Sharpe of 1.27 and an expectation of 0.64
+after haircuts. That looks like outperformance and it is not evidence of
+anything: **253 observations — about ten years at this cadence** — would be
+needed to distinguish the result from the expectation. Shorten the rebalance and
+the sample grows faster, but so does the cost drag.
+
+See [Paper trading](#paper-trading) for what a paper record is and is not
+evidence of.
 
 ## 5. Execution realism has a ceiling
 
-The event-driven engine models order types, partial fills, slippage, latency and
-rejects, but it is calibrated on free data. For crypto, where full order books are
-free, this is genuinely good. For equities, futures and FX, it is an approximation
-whose error you cannot measure without paid tick data.
+There are two engines. Neither models execution microstructure, and the
+event-driven one does **not** add order types, partial fills, latency or rejects
+— an earlier draft of this document claimed it would, which was aspiration rather
+than description.
+
+What the event-driven engine actually adds is *sequencing* and path dependence: a
+delisting settles before a rebalance sizes into the name, a stop is evaluated on
+the position carried into the bar. Those orderings change results and are
+otherwise decided by accident. They are not a higher-fidelity simulation of a
+fill.
+
+The ceiling is the data. With daily bars there is no intraday path, so a stop
+fills at a price the panel supplies rather than at the price it would really have
+filled at somewhere inside the day. No free source supplies intraday history at
+any useful depth, so this ceiling is not one more work would lift.
+
+See [The event-driven engine](#the-event-driven-engine).
 
 ## 6. No live trading
 
-There is no order routing, by design. The gap between a paper-trading loop and live
-execution — queue position, partial fills at your actual broker, borrow
-availability on the day, operational failure — is large and is not simulated here.
+There is no order routing, by instruction: spec section 1 puts live execution
+outside v1. `Broker` is an abstract seam, `PaperBroker` is the only
+implementation, and a test asserts there is no second one.
 
-## 7. Most of the Tier 1 signal set cannot run on free data
+The gap between a paper loop and live execution is large and none of it is
+simulated: queue position, partial fills at your actual broker, borrow
+availability on the day, and operational failure. `quantlab/paper/broker.py`
+documents what would genuinely change if an adapter were written — fills stop
+being deterministic, the broker's record becomes authoritative and has to be
+reconciled every cycle, and a submission that times out may or may not have
+reached the exchange.
 
-Six Tier 1 signals are implemented. **Two of them can actually run.**
+## 7. Part of the signal set still cannot run on free data
 
-| Signal | Blocked by |
+Eight signals are implemented across three tiers. **Six of them run**; the other
+two are blocked by data that free sources do not supply at all.
+
+| Signal | State |
 | --- | --- |
-| `carry.rates` | Needs a free FRED key, which is a five-minute fix. |
-| `equity.profitability` | Needs as-filed fundamentals — SEC EDGAR, Milestone 9. |
-| `carry.commodity_basis` | Needs a second point on the futures curve, which free data does not supply at all. |
-| `carry.fx` | Needs a policy rate per currency; the free catalogue covers two. |
+| `trend.time_series_momentum` | Runs. |
+| `carry.crypto_perp_funding` | Runs. |
+| `carry.rates` | Runs (needs a free FRED key). |
+| `equity.profitability` | Runs (SEC EDGAR, Milestone 9). |
+| `positioning.hedger_pressure` | Runs (CFTC, Milestone 9). |
+| `volatility.vix_term_structure` | Runs (CBOE, Milestone 9). |
+| `carry.commodity_basis` | **Blocked.** Needs a second point on the futures curve, which free data does not supply. |
+| `carry.fx` | **Blocked.** Needs a policy rate per currency; the free catalogue covers two. |
 
-Each refuses to run and says which. None returns an empty cross-section, because
-an empty cross-section looks exactly like a signal with no view and a strategy
-built on one trades nothing while appearing to work.
+The two blocked signals refuse to run and say which dataset is missing. Neither
+returns an empty cross-section, because an empty cross-section looks exactly like
+a signal with no view and a strategy built on one trades nothing while appearing
+to work.
 
-The consequence for the platform as a whole: **cross-asset diversification, which
-is what makes trend following and carry work, is largely unavailable.** Trend on
-fourteen correlated ETFs is one bet, and the 0.14 net Sharpe it produces reflects
-that rather than reflecting the effect.
+The consequence has narrowed but not gone: **cross-asset diversification, which
+is what makes trend following and carry work, is still thinner than the
+literature assumes.** Trend on fourteen correlated ETFs is close to one bet, and
+the 0.14 net Sharpe it produces reflects that rather than reflecting the effect.
 
 ## 8. What the vectorised engine does not model
 
@@ -274,7 +337,12 @@ mean re-running ingest reproduces the snapshot: Yahoo restates adjusted closes,
 EDGAR receives amended filings, and exchanges delist symbols. **Snapshot before you
 research, and keep the snapshot.**
 
-## Portfolio construction and risk (Milestone 7)
+# Part II — limitations of individual components
+
+Part I is what constrains every number this platform produces. What follows
+constrains a particular subsystem, and matters when you use that subsystem.
+
+### Portfolio construction and risk
 
 **`adj_close` is restated, so the research commands are not point-in-time.**
 `quantlab portfolio covariance`, `portfolio build`, `risk attribute` and `risk pca`
@@ -320,7 +388,7 @@ round numbers, not fitted values, and deliberately so: a control fitted to the
 drawdowns in a sample is fitted to the sample. Neither has been validated against
 a live book, and neither should be expected to improve returns.
 
-## Tearsheets (Milestone 8)
+### Tearsheets
 
 **A tearsheet that renders is not a tearsheet that passed.** The refusals
 enforce two specific things — a trial count and a capacity estimate — and nothing
@@ -361,7 +429,7 @@ table, no underwater plot with dates. Those are useful and they are also where
 a reader's attention goes instead of to the deflation statistics, which is why
 the first version does not have them.
 
-## Positioning and fundamentals (Milestone 9)
+### Positioning and company fundamentals
 
 **COT release dates are derived, not observed.** No CFTC payload carries one, and
 the CFTC publishes no machine-readable release calendar — only the prose rule and
@@ -407,7 +475,7 @@ function of the tag list, which is short.
 is several megabytes, so the default is small enough to ingest politely. Nothing
 here has been validated at the scale a real cross-sectional equity strategy needs.
 
-## Volatility indices and the anomaly catalogue (Milestone 9)
+### Volatility indices and the anomaly catalogue
 
 **VIX is not investable, and nothing in the lake stops you forgetting that.** It
 is stored as an index level rather than a bar, which prevents the backtest engine
@@ -447,7 +515,7 @@ no content hash and no API. The id is pinned and the payload shape is checked, s
 a change fails loudly — but it will fail, and when it does the fix is a manual
 re-pin rather than anything automatic.
 
-## Option chains (Milestone 9)
+### Option chains
 
 **This dataset has no history and never will have.** No free source sells
 historical option chains. The collector's first run is 2026-09-20, and nothing
@@ -477,7 +545,7 @@ curve none of which is published with the numbers. They are stored because a fre
 field is worth keeping, and they should be recomputed before anything is traded
 on them.
 
-## EIA (Milestone 9)
+### Energy inventories
 
 **Not point-in-time, and unfixably so.** EIA revises weekly inventories and
 monthly production and serves only the current value. There is no ALFRED
@@ -494,7 +562,7 @@ asserts it handles the documented shape, not the actual one — the same debt FR
 carried until a key arrived. The release-date arithmetic, which is where the
 look-ahead risk lives, needs no key and is fully tested.
 
-## The event-driven engine (Milestone 10)
+### The event-driven engine
 
 **It is not a higher-fidelity simulation.** With daily bars there is no intraday
 path, so a stop still fills at a price the panel supplies rather than at the price
@@ -514,7 +582,7 @@ honest use of the two engines is to measure how much of a result depends on the
 rule, not to search for the rule that makes the result look best — and every such
 search is a trial the deflated Sharpe should be counting.
 
-## Tier 2 signals (Milestone 10)
+### Tier 2 signals
 
 **Hedging pressure is weekly, and that is a hard ceiling.** Fifty-two observations
 a year caps the achievable Sharpe however real the effect is, and caps how much
@@ -543,7 +611,7 @@ deflated Sharpe corrects for how hard you searched, not for a return distributio
 whose left tail is the entire story. Read the skew and excess kurtosis on the
 tearsheet.
 
-## Paper trading (Milestone 11)
+### Paper trading
 
 **Paper trading is not evidence that a strategy works.** It is evidence that the
 pipeline runs, that the signal produces positions on data it has not seen, and
