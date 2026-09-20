@@ -542,3 +542,36 @@ a little most of the time and occasionally loses years of it in a week. The
 deflated Sharpe corrects for how hard you searched, not for a return distribution
 whose left tail is the entire story. Read the skew and excess kurtosis on the
 tearsheet.
+
+## Paper trading (Milestone 11)
+
+**Paper trading is not evidence that a strategy works.** It is evidence that the
+pipeline runs, that the signal produces positions on data it has not seen, and
+that realised costs are roughly what the backtest assumed. Those are worth
+having and they are not the same claim. No amount of paper fixes a signal that
+was overfitted before it started, and the sample is always far too short: the
+real ETF book here would need about **ten years** of fortnightly cycles to
+distinguish its live Sharpe from the backtest's expectation.
+
+**The simulator is deterministic and a real venue is not.** Every order fills
+completely, at a price derived from the panel and the cost model, immediately.
+A real broker partially fills, rejects, and moves while the order is worked. The
+gap between those is not modelled anywhere in this platform and is not small.
+
+**Costs are the backtest's model, not measured fills.** Using the same model on
+both sides is the right call — it removes a spurious difference — but it means
+paper trading cannot validate the cost model. If the impact coefficients are
+wrong, they are wrong identically in both places and the agreement proves
+nothing about either.
+
+**The decay test assumes IID returns.** The standard error
+`sqrt((1 + S²/2)/T)` is the usual asymptotic form. Real returns are
+autocorrelated and fat-tailed, both of which widen it, so the test is
+*optimistic*: a difference it calls insignificant is comfortably insignificant,
+but one it calls significant deserves more scepticism than the t-statistic
+suggests.
+
+**No live execution, by instruction.** Spec section 1 puts it outside v1. The
+`Broker` abstract class is where an adapter would attach and
+`quantlab/paper/broker.py` documents what would change — none of it hard to
+write, all of it easy to write wrongly.

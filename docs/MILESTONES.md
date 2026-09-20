@@ -15,7 +15,7 @@ and committed.
 | 8 | Reporting: tearsheets with capacity and validation statistics | **complete** |
 | 9 | Remaining data sources: SEC EDGAR, CFTC COT, EIA, academic factors, options collector | **complete** |
 | 10 | Event-driven engine and Tier 2 signals | **complete** |
-| 11 | Paper trading loop, dashboard, decay monitor | not started |
+| 11 | Paper trading loop, dashboard, decay monitor | **complete** |
 | 12 | Documentation: data catalogue, how-to-add-a-signal, LIMITATIONS.md | in progress |
 
 ## Milestone 1 — what was delivered
@@ -530,6 +530,55 @@ is a de-risking rule, not protection against a gap, and it works only when the
 curve inverts *before* the crash rather than *with* it. The exits are also
 measured at the close while the platform trades the next open, and VIX gapped
 overnight on both occasions.
+
+## Milestone 11 — what was delivered
+
+**A paper-trading loop that charges itself properly.** Fills go through the same
+`TransactionCostModel` object the backtest uses -- not a simplified version. A
+paper book that filled at mid would beat its own backtest for no reason and the
+difference would read as the strategy working. On the real ETF book the loop
+pays 10.7 bp a side and holds a dollar-neutral 1.00x gross book across six
+instruments.
+
+The cycle is idempotent per as-of date: a repeat is refused rather than
+absorbed, which makes re-running after a failure safe. State is append-only
+JSONL under the data root rather than the compose stack's Postgres, because the
+platform has to run from a clone with no services.
+
+**The broker seam, and nothing behind it.** `Broker` is abstract, `PaperBroker`
+is the only implementation, and a test asserts there is no second one. Spec
+section 1 puts live execution outside v1 by instruction. What would genuinely
+change if an adapter were written -- non-deterministic fills, the broker's record
+becoming authoritative and needing reconciliation every cycle, a timed-out
+submission that may already have reached the exchange -- is documented at the
+seam rather than left as an exercise.
+
+**A decay monitor that answers the question people skip.** Not "has it decayed"
+but "can you yet tell". It compares against the *haircut* backtest Sharpe
+(×0.53, Milestone 5's prior) rather than the raw number, because a strategy
+delivering half its backtest is doing exactly what was predicted and comparing
+against the printed figure would declare decay on every well-behaved strategy.
+
+### A bug worth recording
+
+The first real decay run reported a live Sharpe of **4.08** against an expected
+0.64 -- a spectacular number, and wrong. The monitor annualised by the square
+root of 252 while the book was rebalanced fortnightly. Inferring the frequency
+from the recorded cycle dates instead gives 24 periods a year and a live Sharpe
+of **1.27**, and changes the verdict from an implied triumph to the honest one:
+
+> 8 observations is too few to conclude anything. The standard error of a Sharpe
+> over this sample is 2.34 annualised, which is wider than most of the effects
+> anyone is looking for.
+
+253 observations -- about ten years at this cadence -- would be needed to
+distinguish the result from expectation. That is the uncomfortable arithmetic the
+monitor exists to state.
+
+**Every CLI command is now implemented.** Through Milestones 1-10 the
+unimplemented ones exited non-zero naming the milestone that would deliver them;
+paper trading was the last. The test that policed them now asserts no stub
+remains.
 
 ## Not yet verified
 

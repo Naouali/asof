@@ -41,11 +41,18 @@ jobs:
     enabled: true
 
   - name: paper-trading
-    description: Compute today's signals, produce target positions, mark to market.
-    cron: "0 22 * * 1-5"
-    command: ["paper"]
+    description: >-
+      Compute today's signals, produce target positions, mark to market. Fills
+      are charged the backtest's own cost model -- a paper book filling at mid
+      would beat its own backtest for no reason. Nothing is routed anywhere:
+      spec section 1 puts live execution outside v1.
+    cron: "0 22 * * 1-5"           # 22:00 UTC, after the US close and the ingest
+    command:
+      ["paper", "run", "--signal", "trend.time_series_momentum",
+       "--as-of", "today", "--symbol", "SPY", "--symbol", "QQQ",
+       "--symbol", "IWM", "--symbol", "TLT", "--symbol", "GLD", "--symbol", "EEM"]
     timeout_seconds: 3600
-    enabled: false                 # Milestone 11
+    enabled: false                 # enable once you have chosen a strategy to run
 
   - name: doctor
     description: Environment self-check; the only job enabled before Milestone 2.

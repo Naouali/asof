@@ -215,6 +215,36 @@ space has been searched.
 That is the context a t-statistic needs before it means anything, and it is why
 this platform will not print a Sharpe without a trial count.
 
+## Paper trading
+
+```bash
+quantlab paper run --signal trend.time_series_momentum --as-of 2026-09-18 \
+    --symbol SPY --symbol QQQ --symbol TLT
+quantlab paper book  --strategy trend.time_series_momentum
+quantlab paper decay --strategy trend.time_series_momentum --backtest-sharpe 1.2
+```
+
+**Nothing is routed anywhere.** Spec section 1 puts live execution outside v1, so
+`Broker` is an abstract seam, `PaperBroker` is the only implementation, and a test
+asserts there is no second one. What would change if an adapter were written is
+documented at the seam.
+
+Fills are charged the **backtest's own cost model** — a paper book filling at mid
+would beat its own backtest for no reason. Cycles are idempotent per date, so
+re-running after a failure is safe.
+
+`paper decay` answers the question people skip. Not "has it decayed" but "can you
+yet tell":
+
+```
+trend.time_series_momentum: 8 observations is too few to conclude anything.
+The standard error of a Sharpe over this sample is 2.34 annualised, which is
+wider than most of the effects anyone is looking for.
+```
+
+It compares against the *haircut* backtest Sharpe (×0.53), because a strategy
+delivering half its backtest is behaving exactly as predicted.
+
 ## Validating a result
 
 Every backtest records itself as a trial, and the count deflates the Sharpe it

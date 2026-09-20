@@ -12,6 +12,7 @@ access (spec section 1), so there are no CDN references anywhere.
 
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +72,44 @@ def _lake() -> list[dict[str, Any]]:
     return out
 
 
+def _paper_books() -> list[dict[str, Any]]:
+    """Every paper book's latest cycle.
+
+    Read-only, and deliberately shows the staleness of each book. A dashboard
+    that displays a position without saying when it was last updated invites the
+    reader to assume it is current, and a paper loop that silently stopped
+    running looks exactly like one holding steady.
+    """
+    from quantlab.paper.state import PaperState
+
+    directory = get_settings().layout.state / "paper"
+    if not directory.exists():
+        return []
+
+    books: list[dict[str, Any]] = []
+    now = dt.datetime.now(tz=dt.UTC)
+    for path in sorted(directory.glob("*.jsonl")):
+        state = PaperState(path, path.stem)
+        latest = state.latest()
+        if latest is None:
+            continue
+        as_of = dt.datetime.fromisoformat(latest["as_of"])
+        books.append(
+            {
+                "strategy": latest["strategy"],
+                "as_of": latest["as_of"],
+                "stale_days": round((now - as_of).total_seconds() / 86400.0, 1),
+                "cycles": len(state.history()),
+                "equity": latest["equity"],
+                "gross_exposure": latest["gross_exposure"],
+                "net_exposure": latest["net_exposure"],
+                "positions": len(latest["positions"]),
+                "periods_per_year": round(state.periods_per_year()),
+            }
+        )
+    return books
+
+
 def _last_ingest() -> dict[str, Any] | None:
     from quantlab.data.ingest import recent_runs
 
@@ -122,6 +161,10 @@ def create_app() -> FastAPI:
         return JSONResponse(
             {"sources": [a.as_dict() for a in source_availability()], "count": len(SOURCES)}
         )
+
+    @app.get("/api/paper")
+    def api_paper() -> JSONResponse:
+        return JSONResponse({"books": _paper_books()})
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def index(request: Request) -> HTMLResponse:

@@ -55,18 +55,24 @@ def test_catalogue_detail_shows_caveats() -> None:
     assert "SURVIVORSHIP" in result.stdout
 
 
-@pytest.mark.parametrize(
-    ("argv", "milestone"),
-    [
-        (["paper"], "Milestone 11"),
-    ],
-)
-def test_unimplemented_commands_fail_loudly(argv: list[str], milestone: str) -> None:
-    """Spec section 13: never quietly return an empty result. An unimplemented
-    command exits non-zero and names the milestone that will implement it."""
-    result = runner.invoke(app, argv)
-    assert result.exit_code == 2
-    assert milestone in result.output
+def test_every_command_is_implemented(repo_root: Path) -> None:
+    """Spec section 13: never quietly return an empty result. Through Milestones
+    1-10 the unimplemented commands exited non-zero naming the milestone that
+    would deliver them. Milestone 11 delivered the last of them -- paper trading
+    -- so the invariant is now that no stub remains rather than that each stub
+    is honest about itself.
+
+    `_not_yet` is kept: it is the right shape for the next command that does not
+    exist yet, and deleting it would invite the next stub to return an empty
+    result instead.
+    """
+    source = (repo_root / "src" / "quantlab" / "cli.py").read_text(encoding="utf-8")
+    calls = [
+        line
+        for line in source.splitlines()
+        if "_not_yet(" in line and not line.lstrip().startswith("def ")
+    ]
+    assert calls == [], f"unimplemented commands remain: {calls}"
 
 
 def test_worker_healthcheck_fails_without_a_heartbeat() -> None:
@@ -844,3 +850,104 @@ def test_validate_anomalies_credits_a_strong_result_without_overclaiming(store: 
     )
     assert "Clears" in result.output
     assert "not sufficient" in result.output, "a t-stat says nothing about trial count"
+
+
+# ----------------------------------------------------------------------------------
+# Paper trading
+# ----------------------------------------------------------------------------------
+def test_paper_run_executes_a_cycle(tmp_path: Path, store: object) -> None:
+    config = _smoke_run(tmp_path, store, sessions_count=150)
+    del config  # only the lake is needed
+
+    result = runner.invoke(
+        app,
+        [
+            "paper", "run",
+            "--signal", "trend.time_series_momentum",
+            "--as-of", "2024-05-01",
+            "--symbol", "AAPL", "--symbol", "MSFT",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    assert "equity" in result.output
+
+
+def test_a_repeated_cycle_is_refused(tmp_path: Path, store: object) -> None:
+    """Running twice for one date doubles the trades and puts a step in the
+    equity curve that nothing explains."""
+    _smoke_run(tmp_path, store, sessions_count=150)
+    args = [
+        "paper", "run",
+        "--signal", "trend.time_series_momentum",
+        "--as-of", "2024-05-01",
+        "--symbol", "AAPL", "--symbol", "MSFT",
+    ]  # fmt: skip
+
+    runner.invoke(app, args)
+    repeat = runner.invoke(app, args)
+
+    assert repeat.exit_code == 0
+    assert "already recorded" in repeat.output
+
+
+def test_paper_book_needs_a_history() -> None:
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["paper", "book", "--strategy", "nothing.here"])
+    assert result.exit_code == 2
+    assert "no paper history" in result.output
+
+
+def test_paper_decay_needs_a_return_series(tmp_path: Path, store: object) -> None:
+    """One cycle is a position, not a return. Two is one return. Neither is a
+    series anything can be concluded from."""
+    _smoke_run(tmp_path, store, sessions_count=150)
+    runner.invoke(
+        app,
+        [
+            "paper", "run",
+            "--signal", "trend.time_series_momentum",
+            "--as-of", "2024-05-01",
+            "--symbol", "AAPL", "--symbol", "MSFT",
+        ],
+    )  # fmt: skip
+
+    result = runner.invoke(
+        app,
+        ["paper", "decay", "--strategy", "trend.time_series_momentum", "--backtest-sharpe", "1.2"],
+    )
+    assert result.exit_code == 2
+    assert "needs" in result.output
+
+
+def test_paper_run_rejects_an_unknown_signal() -> None:
+    runner.invoke(app, ["init"])
+    result = runner.invoke(
+        app, ["paper", "run", "--signal", "not.a.signal", "--as-of", "2024-05-01"]
+    )
+    assert result.exit_code == 2
+
+
+def test_the_dashboard_reports_paper_staleness(tmp_path: Path, store: object) -> None:
+    """A dashboard showing a position without saying when it was last updated
+    invites the reader to assume it is current, and a paper loop that silently
+    stopped looks exactly like one holding steady."""
+    from fastapi.testclient import TestClient
+
+    from quantlab.dashboard.app import create_app
+
+    _smoke_run(tmp_path, store, sessions_count=150)
+    runner.invoke(
+        app,
+        [
+            "paper", "run",
+            "--signal", "trend.time_series_momentum",
+            "--as-of", "2024-05-01",
+            "--symbol", "AAPL", "--symbol", "MSFT",
+        ],
+    )  # fmt: skip
+
+    payload = TestClient(create_app()).get("/api/paper").json()
+    assert payload["books"]
+    book = payload["books"][0]
+    assert "stale_days" in book
+    assert book["stale_days"] > 0

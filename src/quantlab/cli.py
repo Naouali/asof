@@ -1125,10 +1125,202 @@ def report(
         raise typer.Exit(code=1)
 
 
-@app.command()
-def paper() -> None:
-    """Run one paper-trading cycle."""
-    _not_yet("paper", 11, "the paper-trading loop")
+paper_app = typer.Typer(
+    name="paper", help="Paper trading: the loop, the book, and decay.", no_args_is_help=True
+)
+app.add_typer(paper_app)
+
+
+@paper_app.command("run")
+def paper_run(
+    signal: Annotated[str, typer.Option("--signal", "-s", help="Signal to trade.")],
+    as_of: Annotated[str, typer.Option("--as-of", help="Point-in-time date.")],
+    symbols: Annotated[
+        list[str] | None, typer.Option("--symbol", help="Instrument. Repeatable.")
+    ] = None,
+    strategy: Annotated[
+        str | None, typer.Option("--strategy", help="Book name. Defaults to the signal.")
+    ] = None,
+    equity: Annotated[
+        float, typer.Option("--equity", help="Starting equity, first run only.")
+    ] = 1e6,
+    gross: Annotated[float, typer.Option("--gross", help="Target gross exposure.")] = 1.0,
+) -> None:
+    """Run one paper-trading cycle.
+
+    No orders leave this machine. The platform simulates execution and leaves a
+    clean interface where a live adapter would attach (spec section 1); fills are
+    charged the backtest's own cost model, because a paper book that filled at
+    mid would beat its own backtest for no reason.
+
+    The cycle is idempotent per as-of date: a repeat is refused rather than
+    absorbed, so re-running after a failure is safe.
+    """
+    from quantlab.data.store import Store
+    from quantlab.paper import PaperBroker, PaperState, PaperTradingLoop
+    from quantlab.signals import get_signal
+
+    try:
+        signal_class = get_signal(signal)
+    except KeyError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+
+    layout = get_settings().layout
+    book = strategy or signal
+    state = PaperState.for_strategy(layout.state, book)
+
+    store = Store(layout)
+    universe = symbols or list(store.symbols(signal_class.spec.required_datasets[0]))
+    if not universe:
+        err_console.print("[red]no instruments[/red] -- pass --symbol, or ingest first")
+        raise typer.Exit(code=2)
+
+    # Resume the book from its last recorded state rather than starting fresh.
+    previous = state.latest()
+    broker = PaperBroker(cash=float(previous["cash"]) if previous else equity)
+    if previous:
+        broker.shares = {p["symbol"]: float(p["shares"]) for p in previous["positions"]}
+
+    loop = PaperTradingLoop(signal_class(), broker, state, symbols=universe, gross_exposure=gross)
+    from quantlab.data.store import _as_utc
+
+    outcome = loop.run_once(store, _as_utc(as_of, boundary="end"))
+
+    if outcome.skipped:
+        console.print(f"[yellow]skipped[/yellow] -- {outcome.reason}")
+        raise typer.Exit(code=0)
+
+    record = outcome.record
+    console.print(
+        f"[bold]{book}[/bold] at {record.as_of[:10]}: equity "
+        f"${record.equity:,.0f}, gross {record.gross_exposure:.2f}x, net "
+        f"{record.net_exposure:+.2f}x, {len(record.positions)} positions"
+    )
+    if record.fills:
+        table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+        table.add_column("symbol")
+        table.add_column("shares", justify="right")
+        table.add_column("price", justify="right")
+        table.add_column("cost bp", justify="right")
+        for fill in sorted(record.fills, key=lambda f: -abs(float(f["shares"]))):
+            table.add_row(
+                str(fill["symbol"]),
+                f"{float(fill['shares']):+,.1f}",
+                f"{float(fill['reference_price']):,.2f}",
+                f"{float(fill['slippage_bps']):.1f}",
+            )
+        console.print(table)
+        console.print(
+            f"\ntraded ${record.traded_notional:,.0f}, costs ${record.costs_paid:,.0f} "
+            f"({record.costs_paid / max(record.traded_notional, 1) / 1e-4:.1f} bp)"
+        )
+    if record.unfilled:
+        console.print(
+            f"[yellow]{len(record.unfilled)} target(s) unfilled[/yellow]: "
+            + ", ".join(f"{u['symbol']} ({u['reason']})" for u in record.unfilled)
+        )
+
+
+@paper_app.command("book")
+def paper_book(
+    strategy: Annotated[str, typer.Option("--strategy", "-s", help="Book name.")],
+) -> None:
+    """Show a paper book's current state and its history."""
+    from quantlab.paper import PaperState
+
+    state = PaperState.for_strategy(get_settings().layout.state, strategy)
+    history = state.history()
+    if not history:
+        err_console.print(
+            f"[red]no paper history for {strategy!r}[/red] -- run a cycle first:\n"
+            f"  quantlab paper run --signal {strategy} --as-of <date>"
+        )
+        raise typer.Exit(code=2)
+
+    latest = history[-1]
+    console.print(
+        f"[bold]{strategy}[/bold]: {len(history)} cycles, "
+        f"{latest['as_of'][:10]} latest, equity ${latest['equity']:,.0f}"
+    )
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("symbol")
+    table.add_column("shares", justify="right")
+    table.add_column("mark", justify="right")
+    table.add_column("weight", justify="right")
+    for position in sorted(latest["positions"], key=lambda p: -abs(float(p["weight"]))):
+        table.add_row(
+            str(position["symbol"]),
+            f"{float(position['shares']):+,.1f}",
+            f"{float(position['mark']):,.2f}",
+            f"{float(position['weight']):+.2%}",
+        )
+    console.print(table)
+    total_costs = sum(float(r["costs_paid"]) for r in history)
+    total_traded = sum(float(r["traded_notional"]) for r in history)
+    console.print(
+        f"\n[dim]cumulative: traded ${total_traded:,.0f}, costs ${total_costs:,.0f}"
+        f"{f' ({total_costs / total_traded / 1e-4:.1f} bp)' if total_traded else ''}[/dim]"
+    )
+
+
+@paper_app.command("decay")
+def paper_decay(
+    strategy: Annotated[str, typer.Option("--strategy", "-s", help="Book name.")],
+    backtest_sharpe: Annotated[
+        float, typer.Option("--backtest-sharpe", help="The Sharpe this was launched on.")
+    ],
+    haircut: Annotated[
+        float, typer.Option("--haircut", help="Fraction of backtest Sharpe expected live.")
+    ] = 0.53,
+) -> None:
+    """Has the strategy decayed, or is it too early to tell?
+
+    The second question usually has an answer and is the one people skip. The
+    comparison is against the *haircut* backtest Sharpe, not the raw one:
+    delivering half the backtest is what the platform's prior predicts, so
+    comparing against the printed number would declare decay on every strategy
+    that behaved exactly as expected.
+    """
+    from quantlab.paper import PaperState, assess_decay
+
+    state = PaperState.for_strategy(get_settings().layout.state, strategy)
+    _dates, equity = state.equity_curve()
+    if len(equity) < 3:
+        err_console.print(
+            f"[red]{len(equity)} cycle(s) recorded[/red] -- a decay assessment needs "
+            "a return series, which needs at least three."
+        )
+        raise typer.Exit(code=2)
+
+    values = np.array(equity, dtype=float)
+    returns = np.diff(values) / values[:-1]
+    # Inferred from the cycles, not assumed daily: a fortnightly book annualised
+    # by the square root of 252 reports a Sharpe three times too large.
+    periods = state.periods_per_year()
+    report = assess_decay(
+        returns,
+        strategy=strategy,
+        backtest_sharpe=backtest_sharpe,
+        haircut=haircut,
+        periods_per_year=periods,
+    )
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("")
+    table.add_column("", justify="right")
+    table.add_row("backtest Sharpe", f"{report.backtest_sharpe:.2f}")
+    table.add_row("expected after haircut", f"{report.expected_sharpe:.2f}")
+    table.add_row("live Sharpe", f"{report.live_sharpe:.2f}")
+    table.add_row("observations", f"{report.observations:,}")
+    table.add_row("periods a year (inferred)", f"{periods:.0f}")
+    table.add_row("t-statistic", f"{report.t_statistic:+.2f}")
+    table.add_row("observations to conclude", f"{report.observations_needed:,}")
+    console.print(table)
+    console.print(f"\n{report.verdict()}")
+
+    if report.has_decayed:
+        raise typer.Exit(code=1)
 
 
 @worker_app.command("run")
