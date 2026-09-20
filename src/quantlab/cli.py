@@ -17,6 +17,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Annotated, NoReturn
 
+import polars as pl
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -38,9 +39,13 @@ app = typer.Typer(
 worker_app = typer.Typer(name="worker", help="Long-running worker process.", no_args_is_help=True)
 scheduler_app = typer.Typer(name="scheduler", help="Job scheduler.", no_args_is_help=True)
 data_app = typer.Typer(name="data", help="Data lake and catalogue.", no_args_is_help=True)
+costs_app = typer.Typer(
+    name="costs", help="Transaction costs, impact and capacity.", no_args_is_help=True
+)
 app.add_typer(worker_app)
 app.add_typer(scheduler_app)
 app.add_typer(data_app)
+app.add_typer(costs_app)
 
 console = Console()
 err_console = Console(stderr=True)
@@ -352,6 +357,180 @@ def data_query(
         )
         raise typer.Exit(code=2)
     console.print(store.as_of(as_of).sql(sql, datasets=dataset))
+
+
+def _money(value: float) -> str:
+    """Currency with adaptive units, so a capacity curve spanning nine orders of
+    magnitude does not print a column of zeroes."""
+    for threshold, suffix in ((1e9, "bn"), (1e6, "m"), (1e3, "k")):
+        if abs(value) >= threshold:
+            return f"${value / threshold:,.1f}{suffix}"
+    return f"${value:,.0f}"
+
+
+@costs_app.command("estimate")
+def costs_estimate(
+    notional: Annotated[float, typer.Option("--notional", "-n", help="Order size in currency.")],
+    adv: Annotated[float, typer.Option("--adv", help="Average daily traded value.")],
+    volatility: Annotated[
+        float, typer.Option("--vol", help="Daily return volatility as a decimal (0.02 = 2%).")
+    ] = 0.02,
+    spread_bps: Annotated[float, typer.Option("--spread", help="Quoted spread in bps.")] = 2.0,
+    asset_class: Annotated[
+        str, typer.Option("--asset-class", "-a", help="equity, futures, fx, crypto or credit.")
+    ] = "equity",
+    horizon_days: Annotated[
+        float, typer.Option("--horizon", help="Days over which the order is worked.")
+    ] = 1.0,
+    compare_flat: Annotated[
+        float | None,
+        typer.Option("--compare-flat", help="Also show what a flat N-bps model would claim."),
+    ] = None,
+) -> None:
+    """Cost one order, decomposed.
+
+    The decomposition is the diagnostic: a strategy killed by spread needs a slower
+    rebalance, one killed by impact needs less size, one killed by borrow needs a
+    different short book. A single number tells you none of that.
+    """
+    from quantlab.costs import Instrument, Order, TransactionCostModel
+    from quantlab.costs.base import FlatBpsCostModel
+    from quantlab.data.catalogue import AssetClass
+
+    try:
+        klass = AssetClass(asset_class.lower())
+    except ValueError:
+        err_console.print(
+            f"[red]unknown asset class {asset_class!r}[/red]; "
+            f"known: {', '.join(a.value for a in AssetClass)}"
+        )
+        raise typer.Exit(code=2) from None
+
+    instrument = Instrument(
+        symbol="ORDER",
+        asset_class=klass,
+        adv_notional=adv,
+        volatility_daily=volatility,
+        spread_bps=spread_bps,
+    )
+    model = TransactionCostModel.for_asset_class(klass)
+    breakdown = model.estimate(Order("ORDER", notional, horizon_days=horizon_days), instrument)
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("component")
+    table.add_column("bps", justify="right")
+    table.add_column("currency", justify="right")
+    for label, value in (
+        ("spread (half)", breakdown.spread_bps),
+        ("impact paid", breakdown.impact_bps),
+        ("  temporary", breakdown.temporary_impact_bps),
+        ("  permanent (half paid)", breakdown.permanent_impact_bps / 2),
+        ("commission", breakdown.commission_bps),
+    ):
+        table.add_row(label, f"{value:.3f}", f"{value * 1e-4 * notional:,.0f}")
+    table.add_row(
+        "[bold]total[/bold]",
+        f"[bold]{breakdown.total_bps:.3f}[/bold]",
+        f"[bold]{breakdown.currency(notional):,.0f}[/bold]",
+    )
+    console.print(table)
+
+    participation = breakdown.detail["participation"]
+    round_trip = model.round_trip_bps(
+        Order("ORDER", notional, horizon_days=horizon_days), instrument
+    )
+    console.print(
+        f"\nparticipation {participation:.2%} of ADV, "
+        f"round trip {round_trip:.2f} bps over {horizon_days:g} day(s)"
+    )
+    if breakdown.detail.get("extrapolating"):
+        console.print(
+            "[yellow]beyond the square-root law's calibrated range (~10% of ADV); "
+            "real impact is likely HIGHER than shown[/yellow]"
+        )
+
+    if compare_flat is not None:
+        flat = FlatBpsCostModel(compare_flat, acknowledge_unrealistic=True)
+        flat_bps = flat.estimate(Order("ORDER", notional), instrument).total_bps
+        ratio = breakdown.total_bps / flat_bps if flat_bps else float("inf")
+        console.print(
+            f"\n[dim]a flat {compare_flat:.1f} bp model would claim "
+            f"{flat_bps * 1e-4 * notional:,.0f} -- understating by {ratio:.1f}x. "
+            "Flat costs are size-blind, which is why they imply unlimited capacity.[/dim]"
+        )
+
+
+@costs_app.command("capacity")
+def costs_capacity(
+    alpha_bps: Annotated[float, typer.Option("--alpha", help="Gross alpha in bps per rebalance.")],
+    turnover: Annotated[
+        float, typer.Option("--turnover", help="One-way turnover per rebalance, as a fraction.")
+    ],
+    rebalances: Annotated[float, typer.Option("--rebalances", help="Rebalances per year.")] = 12.0,
+    names: Annotated[
+        int, typer.Option("--names", help="Instruments in the traded universe.")
+    ] = 100,
+    adv: Annotated[float, typer.Option("--adv", help="Average daily value per name.")] = 50e6,
+    volatility: Annotated[float, typer.Option("--vol", help="Daily volatility.")] = 0.02,
+    spread_bps: Annotated[float, typer.Option("--spread", help="Quoted spread in bps.")] = 5.0,
+    horizon_days: Annotated[
+        float, typer.Option("--horizon", help="Days over which each rebalance is worked.")
+    ] = 1.0,
+    holding_bps: Annotated[
+        float, typer.Option("--holding", help="Annual financing and borrow, in bps.")
+    ] = 0.0,
+) -> None:
+    """Break-even AUM: where the strategy's own trading eats its edge.
+
+    Spec section 5: a strategy with no capacity number is not a finished strategy.
+    """
+    from quantlab.costs import CapacityModel, UniverseLiquidity
+
+    universe = UniverseLiquidity.equal_weight(
+        [f"N{i}" for i in range(names)],
+        adv_notional=adv,
+        volatility_daily=volatility,
+        spread_bps=spread_bps,
+    )
+    result = CapacityModel().solve(
+        universe,
+        gross_alpha_bps_per_rebalance=alpha_bps,
+        turnover_per_rebalance=turnover,
+        rebalances_per_year=rebalances,
+        horizon_days=horizon_days,
+        holding_cost_bps_annual=holding_bps,
+    )
+
+    if not result.is_viable:
+        err_console.print(f"[red]{result.summary()}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[bold]{result.summary()}[/bold]\n")
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("AUM", justify="right")
+    table.add_column("gross bp/yr", justify="right")
+    table.add_column("cost bp/yr", justify="right")
+    table.add_column("net bp/yr", justify="right")
+    # Show the decade or so either side of the break-even. The full curve spans
+    # $1k to $1tn, and printing the part where cost rounds to zero tells no one
+    # anything.
+    break_even = result.break_even_aum or 0.0
+    rows = result.curve.filter(
+        (pl.col("aum") >= break_even / 1e3) & (pl.col("aum") <= break_even * 30)
+    )
+    for row in rows.iter_rows(named=True):
+        net = row["net_bps_annual"]
+        table.add_row(
+            _money(row["aum"]),
+            f"{row['gross_bps_annual']:.0f}",
+            f"{row['cost_bps_annual']:.1f}",
+            f"[{'green' if net > 0 else 'red'}]{net:.0f}[/]",
+        )
+    console.print(table)
+    console.print(
+        "[dim]Equal-weighted homogeneous universes overstate capacity: a real "
+        "universe's thin names cost disproportionately more.[/dim]"
+    )
 
 
 @app.command()

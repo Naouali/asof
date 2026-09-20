@@ -7,7 +7,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help base build up down restart ps logs doctor init ingest ingest-daily \
         backtest paper test lint format typecheck check shell notebook catalogue \
-        status fetchers \
+        status fetchers capacity \
         dashboard lock clean clean-data verify-multiarch dev-image
 
 COMPOSE      ?= docker compose
@@ -95,6 +95,10 @@ status:  ## Show what the lake holds and how stale it is
 
 fetchers:  ## List every fetcher and whether it can run right now
 	$(COMPOSE) exec -T worker quantlab data fetchers
+
+capacity:  ## Break-even AUM: make capacity ALPHA=25 TURNOVER=0.4
+	@test -n "$(ALPHA)" || { echo "usage: make capacity ALPHA=<bps/rebalance> TURNOVER=<fraction>"; exit 2; }
+	$(COMPOSE) exec -T worker quantlab costs capacity --alpha $(ALPHA) --turnover $(TURNOVER)
 
 backtest:  ## Run a backtest: make backtest CONFIG=configs/trend_futures.yaml
 	@test -n "$(CONFIG)" || { echo "usage: make backtest CONFIG=configs/<strategy>.yaml"; exit 2; }

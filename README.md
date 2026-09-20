@@ -82,6 +82,21 @@ archive, which is the only way to build a macro signal without look-ahead bias.
 `quantlab doctor` names every unavailable source and the environment variable that
 would enable it.
 
+## Costing a trade
+
+```bash
+# Decomposed, with what a flat model would have claimed
+quantlab costs estimate -n 200e6 --adv 8e9 --vol 0.018 --spread 1.2 --compare-flat 10
+
+# The number every finished strategy needs
+quantlab costs capacity --alpha 25 --turnover 0.4 --rebalances 12 --names 200
+```
+
+There is deliberately **no flat basis-point cost model available as a default**.
+Flat costs are roughly right for the small trades a researcher tests on and wildly
+optimistic at deployment size, which makes every strategy look scalable and every
+capacity estimate infinite.
+
 ## Layout
 
 ```
@@ -109,9 +124,11 @@ number you might act on lives in `src/` with a test.
 
 ## Status
 
-Milestones 1–2 of 12 complete: repository skeleton, Docker stack, CI, the data
-catalogue, and the data layer — parquet lake, point-in-time snapshots, trading
-calendars, and eight fetchers across Yahoo, Binance and FRED/ALFRED.
+Milestones 1–3 of 12 complete: repository skeleton, Docker stack and CI; the data
+layer — parquet lake, point-in-time snapshots, trading calendars and eight fetchers
+across Yahoo, Binance and FRED/ALFRED; and the cost models — square-root impact,
+Almgren-Chriss scheduling, spread estimation with its bias problem documented,
+financing and borrow, and the capacity calculator.
 
 Commands whose implementation lands in a later milestone exit non-zero naming that
 milestone, rather than returning an empty result that could be mistaken for a

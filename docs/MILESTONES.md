@@ -7,7 +7,7 @@ and committed.
 | --- | --- | --- |
 | 1 | Skeleton + Docker: repo structure, compose stack, Makefile, CI | **complete** |
 | 2 | Data layer: store, PIT machinery, calendars, FRED + Stooq/Yahoo + Binance | **complete** |
-| 3 | Cost models: square-root impact, spread, financing, capacity calculator | not started |
+| 3 | Cost models: square-root impact, spread, financing, capacity calculator | **complete** |
 | 4 | Vectorised backtest engine with enforced accounting identities | not started |
 | 5 | Validation: CPCV, DSR with automatic trial counting, PBO, empirical-Bayes shrinkage | not started |
 | 6 | Tier 1 signals: time-series momentum, cross-asset carry, equity profitability | not started |
@@ -95,6 +95,50 @@ throttling, an offline mode that refuses sockets, and a JSONL run registry.
 that opens a socket. Fixtures are real recorded payloads; provenance is documented
 in `tests/fixtures/README.md`.
 
+## Milestone 3 — what was delivered
+
+**Impact** — the square-root law `Y·σ·(Q/ADV)^δ`, split into permanent and
+temporary, with only half the permanent charged (it accrues while the order is
+worked). Per-asset-class calibrations, each with its rationale in code. Beyond
+~10% of ADV the result is flagged as extrapolation.
+
+**Execution** — Almgren-Chriss optimal scheduling, dimensionally consistent in
+participation units, whose risk-neutral solution reproduces the square-root law to
+within the discretisation error (asserted to converge). Efficient frontier of
+cost against certainty. A power-law propagator model for the event-driven engine,
+producing impact *paths* rather than averages.
+
+**Spread** — observed quotes where available, plus Roll, Corwin-Schultz and
+Abdi-Ranaldo. Every estimator reports `coverage` and a **resolution floor**, and
+every one raises rather than clamping an undefined result to zero. The bias
+correction is explicit machinery with provenance, defaulting to no shrinkage and
+saying so.
+
+Validating these against real Binance data produced the milestone's most
+important finding: with a true BTCUSDT spread of 0.001 bp, Roll returned 167 bp
+and Corwin-Schultz 106 bp, and Abdi-Ranaldo was undefined for seven of eight
+majors. On liquid volatile instruments these estimators measure daily volatility,
+not spread. Instruments now carry a `spread_source` provenance field and the
+model warns when a crypto spread is estimated rather than observed. See
+docs/LIMITATIONS.md.
+
+**Financing** — punitive default borrow (15 bp/month, flagged as assumed), margin
+financing on the levered portion only, zero short rebate by default, signed
+perpetual funding, and futures roll as two crossings per roll.
+
+**Capacity** — break-even AUM by numerical solve, checked against a closed form to
+1.5e-15, with the curve for the tearsheet. Verified to scale with alpha squared.
+A strategy whose costs beat its edge at any size reports *no* capacity rather than
+a small one.
+
+**CLI** — `quantlab costs estimate` (decomposed, with `--compare-flat` to show
+what a flat model would claim) and `quantlab costs capacity`.
+
+**Tests** — 426 total, 92% coverage on `costs`. Assertions are algebraic
+identities or empirical regularities, not pinned outputs: the 4×-size-for-2×-impact
+rule, `Q^1.5` currency scaling, alpha-squared capacity, scalar/vectorised
+agreement, and estimator bias measured against a simulated known spread.
+
 ## Not yet verified
 
 **Docker.** The `make up` acceptance criterion has still **not** been executed: the
@@ -102,6 +146,12 @@ development machine has the Docker CLI but no daemon. The compose file, Dockerfi
 and Makefile are covered by static tests and by CI jobs written for them, but the
 first real `docker compose up` will happen either in CI or on a machine with a
 running daemon. Treat the Docker layer as unproven until one of those goes green.
+
+**Cost calibration.** Every impact and financing parameter is a literature default,
+not a number fitted to real fills. The models are correct; whether they are
+*calibrated* for your execution is unknown and unknowable from free data. The
+spread estimators have been validated against simulation, where the answer is
+known, but not against live equity quotes, which are not free.
 
 **FRED and ALFRED.** No free FRED key was available, so neither fetcher has been
 run against the live API. Their guard rails are tested, and their parsers are

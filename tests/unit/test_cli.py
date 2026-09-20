@@ -151,3 +151,71 @@ def test_query_without_as_of_warns_it_is_not_research_grade(populated_store: obj
     result = runner.invoke(app, ["data", "query", "select count(*) as n from ohlcv_daily"])
     assert result.exit_code == 0
     assert "not point-in-time" in result.stdout
+
+
+def test_costs_estimate_decomposes_the_cost() -> None:
+    result = runner.invoke(
+        app,
+        ["costs", "estimate", "-n", "2e8", "--adv", "8e9", "--vol", "0.018", "--spread", "1.2"],
+    )
+    assert result.exit_code == 0
+    for component in ("spread", "impact paid", "temporary", "permanent", "commission", "total"):
+        assert component in result.stdout
+    assert "participation" in result.stdout
+
+
+def test_costs_estimate_flags_extrapolation() -> None:
+    """Beyond ~10% of ADV the square-root law understates; the CLI must say so
+    rather than printing a confident number."""
+    result = runner.invoke(
+        app, ["costs", "estimate", "-n", "4e9", "--adv", "8e9", "--spread", "1.2"]
+    )
+    assert result.exit_code == 0
+    assert "likely HIGHER" in result.stdout
+
+
+def test_costs_estimate_can_show_what_a_flat_model_would_claim() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "costs",
+            "estimate",
+            "-n",
+            "2e9",
+            "--adv",
+            "8e9",
+            "--spread",
+            "1.2",
+            "--compare-flat",
+            "10",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "understating" in result.stdout
+    assert "unlimited capacity" in result.stdout
+
+
+def test_costs_estimate_rejects_an_unknown_asset_class() -> None:
+    result = runner.invoke(
+        app, ["costs", "estimate", "-n", "1e6", "--adv", "1e9", "--asset-class", "tulips"]
+    )
+    assert result.exit_code == 2
+    assert "unknown asset class" in result.output
+
+
+def test_costs_capacity_reports_a_break_even() -> None:
+    result = runner.invoke(
+        app, ["costs", "capacity", "--alpha", "25", "--turnover", "0.4", "--names", "200"]
+    )
+    assert result.exit_code == 0
+    assert "break-even AUM" in result.stdout
+    assert "gross bp/yr" in result.stdout
+
+
+def test_costs_capacity_fails_loudly_when_a_strategy_never_pays() -> None:
+    """Not a small number: reporting one would imply it works if kept tiny."""
+    result = runner.invoke(
+        app, ["costs", "capacity", "--alpha", "0.2", "--turnover", "0.8", "--spread", "20"]
+    )
+    assert result.exit_code == 1
+    assert "no viable capacity" in result.output

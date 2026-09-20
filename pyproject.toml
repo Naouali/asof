@@ -73,6 +73,7 @@ dev = [
   "ruff>=0.8.4,<0.15",
   "mypy>=1.14,<2.0",
   "types-pyyaml>=6.0.12,<7.0",
+  "scipy-stubs>=1.14,<2.0",
 ]
 
 [project.scripts]
@@ -111,6 +112,11 @@ ignore = [
   "E501",   # line length is handled by the formatter
   "B008",   # typer uses function calls in argument defaults by design
 ]
+
+# Greek letters are the notation the impact, optimisation and validation
+# literature uses. Spelling sigma out would make the formulas harder to check
+# against the papers they come from, which is the only way anyone can audit them.
+allowed-confusables = ["σ", "δ", "κ", "γ", "η", "ε", "λ", "τ", "α", "β", "μ", "ρ", "Σ", "·", "−", "×", "≈", "≤", "≥"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S603", "S607", "S608"]  # asserts, subprocesses and deliberately-malicious SQL are the point

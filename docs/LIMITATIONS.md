@@ -107,8 +107,45 @@ survives them may still be unprofitable; a strategy that does not survive them i
 almost certainly unprofitable.** The second inference is much stronger than the
 first.
 
-Short borrow fees, where data is unavailable, are assumed punitive — enough to
-erase most published anomaly alphas. That is a feature.
+Four specific limits worth knowing:
+
+- **Nothing here is calibrated to your fills.** Y, δ and the permanent fraction
+  are literature defaults. The right way to use this module is to replace them
+  with numbers fitted to your own executions; until then every cost is an
+  informed guess.
+- **Beyond ~10% of ADV the law is extrapolation**, and it understates there. Any
+  capacity number that requires trading more than that is labelled an upper bound,
+  and should be read as "certainly no more than this", not "about this".
+- **Low-frequency spread estimators fail outright on liquid, volatile
+  instruments.** This is worse than the upward bias the literature describes, and
+  it is measured, not theorised. On 993 days of real Binance daily bars
+  (2026-09-20), against a true quoted BTCUSDT spread of **0.001 bp**:
+
+  | Estimator | Estimate | Error |
+  | --- | --- | --- |
+  | Roll | 167 bp | ×167,000 |
+  | Corwin-Schultz | 106 bp | ×106,000 |
+  | Abdi-Ranaldo | 62 bp | ×62,000 |
+
+  Abdi-Ranaldo was *undefined* for seven of the eight majors tested. These
+  estimators are not biased here — they are measuring daily volatility instead of
+  spread. The statistical reason is that a daily-bar estimator cannot resolve a
+  spread below roughly `σ/√n`, which for BTC over 993 days is about 8 bp, while
+  the true spread is four orders of magnitude smaller. Every estimate now reports
+  that resolution floor.
+
+  **Never estimate a spread you can observe.** Crypto books are free; the platform
+  warns when a crypto instrument is costed from an estimate. For equities and
+  futures, where free quotes do not exist, estimated spreads are used, are marked
+  `spread_source="estimated"`, and are not trustworthy in absolute terms — treat
+  them as an upper bound on a liquid name and read the capacity number
+  accordingly. On simulated data with a 20 bp spread (where the spread is a
+  meaningful fraction of daily variation) the same estimators came out +379%,
+  +250% and −6% respectively, which is the regime the literature describes and the
+  reason Abdi-Ranaldo is the default.
+- **Short borrow is assumed, not known.** 15 bp/month by default. A long/short
+  equity strategy's net alpha is roughly linear in this number, so it is the first
+  thing to replace with real data.
 
 ## 3. Validation bounds overfitting, it does not eliminate it
 
@@ -144,7 +181,22 @@ There is no order routing, by design. The gap between a paper-trading loop and l
 execution — queue position, partial fills at your actual broker, borrow
 availability on the day, operational failure — is large and is not simulated here.
 
-## 7. The point-in-time guarantee has a hard edge
+## 7. Capacity is a ceiling, not a plan
+
+The break-even AUM assumes the impact model is right, the ADV forecast is right,
+and that trading is spread across the universe in proportion to weights. All three
+degrade in the direction of *less* capacity:
+
+- Equal-weighted homogeneous universes overstate capacity, because a real
+  universe's thin names cost disproportionately more. On a 50/50 book of a $4.9bn
+  and a $100m name, costing name-by-name gives 2.6× the cost that the combined ADV
+  would suggest.
+- ADV is measured over a trailing window and is itself a forecast. It collapses
+  precisely when you most want to trade.
+- Crowding is not modelled at all. If others hold the same position, your exit is
+  correlated with theirs and impact is worse than any single-trader model says.
+
+## 8. The point-in-time guarantee has a hard edge
 
 `Snapshot` makes look-ahead bias structurally unavailable **for data that is in the
 lake**. It cannot help with the two harder cases:
@@ -158,7 +210,7 @@ lake**. It cannot help with the two harder cases:
   ETFs that still exist in 2026 is a survivorship-biased universe no matter how
   correct the timestamps are.
 
-## 8. What "reproducible" means here
+## 9. What "reproducible" means here
 
 A given commit plus a given *data snapshot* produces identical results. It does not
 mean re-running ingest reproduces the snapshot: Yahoo restates adjusted closes,
