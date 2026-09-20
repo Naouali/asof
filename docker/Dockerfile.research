@@ -7,7 +7,6 @@
 # ./src editable, so a notebook always exercises the same code the backtest runs.
 
 ARG BASE_IMAGE=quantlab-base:local
-ARG UV_VERSION=0.5.14
 FROM ${BASE_IMAGE}
 
 USER root
@@ -22,9 +21,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 # resolved by the same lockfile as everything else, so the notebook environment
 # cannot drift from the backtest environment.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=pyproject.toml,target=/app/pyproject.toml \
-    --mount=type=bind,source=uv.lock,target=/app/uv.lock \
-    uv sync --frozen --no-dev --extra research --no-install-project \
+    uv sync --frozen --no-dev --extra research \
  && chown -R quant:quant /app/.venv
 
 USER quant

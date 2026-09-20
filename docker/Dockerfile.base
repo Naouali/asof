@@ -36,6 +36,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ./src over /app/src in compose gives live code without a rebuild.
 COPY README.md ./
 COPY src ./src
+# configs/ ships in the image so `docker run quantlab-worker quantlab scheduler run`
+# works standalone; compose bind-mounts over it for live editing.
+COPY configs ./configs
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
