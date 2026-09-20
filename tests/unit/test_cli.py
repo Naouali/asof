@@ -398,3 +398,261 @@ def test_validate_library_reports_the_shrinkage(settings: Settings) -> None:
     assert result.exit_code == 0
     assert "Var(t)" in result.stdout
     assert "shrunk t" in result.stdout
+
+
+# ----------------------------------------------------------------------------------
+# Portfolio construction and risk
+# ----------------------------------------------------------------------------------
+def _equity_lake(store: object, *, yield_annual: float = 0.0, sessions: int = 320) -> None:
+    """A small correlated universe, optionally paying a dividend.
+
+    ``yield_annual`` separates ``adj_close`` from ``close``: the total-return
+    series compounds at the extra rate while the price series does not, which is
+    what a real dividend-paying instrument looks like in the lake.
+    """
+    import numpy as np
+    from tests.conftest import bar
+
+    rng = np.random.default_rng(11)
+    days = [dt.date(2024, 1, 2) + dt.timedelta(days=i) for i in range(sessions)]
+    common = rng.normal(0.0, 0.009, sessions)
+    rows = []
+    for index, symbol in enumerate(("AAA", "BBB", "CCC", "DDD")):
+        beta = 0.7 + 0.2 * index
+        price, total = 100.0, 100.0
+        for step, session in enumerate(days):
+            move = beta * common[step] + rng.normal(0.0, 0.004)
+            price *= 1.0 + move
+            total *= 1.0 + move + yield_annual / 252.0
+            row = bar(symbol, session, price)
+            row["adj_close"] = total
+            row["volume"] = 4_000_000.0
+            rows.append(row)
+    store.write(pl.DataFrame(rows), asset_class="equity")  # type: ignore[attr-defined]
+
+
+def _factor_lake(store: object, *, sessions: int = 320) -> None:
+    """Daily factor observations stamped at midnight, as a real series is.
+
+    The bars are stamped at their 21:00 session close, so anything joining the
+    two has to join on the calendar date rather than the instant.
+    """
+    import numpy as np
+
+    rng = np.random.default_rng(5)
+    days = [dt.date(2024, 1, 2) + dt.timedelta(days=i) for i in range(sessions)]
+    rows = []
+    for symbol, scale in (("KF_MKT_RF", 0.009), ("KF_SMB", 0.004), ("KF_RF", 0.0)):
+        for session in days:
+            as_of = dt.datetime(session.year, session.month, session.day, tzinfo=dt.UTC)
+            rows.append(
+                {
+                    "source": "ken_french",
+                    "dataset": "series_observations",
+                    "symbol": symbol,
+                    "as_of": as_of,
+                    "known_at": as_of,
+                    "ingested_at": as_of,
+                    "value": float(rng.normal(0.0, scale)) if scale else 0.00008,
+                    "units": "daily return",
+                    "vintage": False,
+                }
+            )
+    store.write(pl.DataFrame(rows), asset_class="factors")  # type: ignore[attr-defined]
+
+
+def test_portfolio_covariance_compares_the_estimators(store: object) -> None:
+    _equity_lake(store)
+    result = runner.invoke(
+        app,
+        ["portfolio", "covariance", "-s", "AAA", "-s", "BBB", "-s", "CCC", "--as-of", "2024-10-01"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "ledoit-wolf(constant_correlation)" in result.output
+    assert "sample" in result.output
+
+
+@pytest.mark.parametrize("method", ["equal", "inverse-vol", "risk-parity", "mean-variance"])
+def test_portfolio_build_runs_every_method(store: object, method: str) -> None:
+    _equity_lake(store)
+    result = runner.invoke(
+        app,
+        [
+            "portfolio", "build",
+            "-s", "AAA", "-s", "BBB", "-s", "CCC", "-s", "DDD",
+            "--as-of", "2024-10-01", "-m", method,
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    assert "effective positions" in result.output
+
+
+def test_risk_parity_equalises_risk_not_weights(store: object) -> None:
+    """The output that makes the method worth having: risk shares, not weights."""
+    _equity_lake(store)
+    result = runner.invoke(
+        app,
+        [
+            "portfolio", "build",
+            "-s", "AAA", "-s", "BBB", "-s", "CCC", "-s", "DDD",
+            "--as-of", "2024-10-01", "-m", "risk-parity",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    shares = [
+        float(token.rstrip("%"))
+        for line in result.output.splitlines()
+        if line.split() and line.split()[0] in {"AAA", "BBB", "CCC", "DDD"}
+        for token in [line.split()[-1]]
+    ]
+    assert len(shares) == 4
+    assert max(shares) - min(shares) < 1.0  # every position carries ~25% of the risk
+
+
+def test_portfolio_build_rejects_an_unknown_method(store: object) -> None:
+    _equity_lake(store)
+    result = runner.invoke(
+        app,
+        ["portfolio", "build", "-s", "AAA", "-s", "BBB", "--as-of", "2024-10-01", "-m", "sharpe"],
+    )
+    assert result.exit_code == 2
+    assert "unknown method" in result.output
+
+
+def test_portfolio_build_names_an_infeasible_constraint_set(store: object) -> None:
+    """Four names capped at 10% cannot reach a fully invested book. The command
+    has to say so rather than print weights that miss the target."""
+    _equity_lake(store)
+    result = runner.invoke(
+        app,
+        [
+            "portfolio", "build",
+            "-s", "AAA", "-s", "BBB", "-s", "CCC", "-s", "DDD",
+            "--as-of", "2024-10-01", "-m", "mean-variance", "--max-position", "0.10",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 2
+    assert "unreachable" in result.output
+
+
+def test_portfolio_commands_fail_loudly_on_an_empty_lake(settings: Settings) -> None:
+    runner.invoke(app, ["init"])
+    result = runner.invoke(
+        app, ["portfolio", "covariance", "-s", "AAA", "-s", "BBB", "--as-of", "2024-10-01"]
+    )
+    assert result.exit_code == 2
+    assert "no daily bars" in result.output
+
+
+def test_returns_are_total_not_price(store: object) -> None:
+    """The regression test for the most expensive bug in this milestone.
+
+    Computing returns from ``close`` rather than ``adj_close`` drops the dividend
+    yield from every observation, and an attribution reports the missing yield as
+    negative alpha. Here the instruments pay 6% a year, so a price-return
+    implementation would understate every mean return by that amount. The
+    covariance command's reported volatility is unaffected by a constant drift,
+    so the check has to be on the returns themselves.
+    """
+    from quantlab.cli import _returns_frame
+
+    _equity_lake(store, yield_annual=0.06)
+    frame = _returns_frame(["AAA"], "2024-10-01", 250)
+    realised = float(frame["AAA"].mean()) * 252
+
+    # The same window, priced the wrong way. Taking it from the full history
+    # instead would compare two different windows and prove nothing.
+    prices = (
+        store.as_of("2024-10-01")  # type: ignore[attr-defined]
+        .ohlcv_daily(symbols=["AAA"])
+        .sort("as_of")["close"]
+        .to_numpy()[-(frame.height + 1) :]
+    )
+    price_only = float(((prices[1:] / prices[:-1]) - 1.0).mean()) * 252
+
+    assert realised - price_only == pytest.approx(0.06, abs=0.002)
+
+
+def test_risk_attribute_joins_on_the_calendar_date(store: object) -> None:
+    """Bars are stamped at 21:00 UTC and factor observations at midnight, so an
+    exact-instant join matches nothing. Getting this wrong is silent: the command
+    would either find no data or, worse, regress against a shifted series."""
+    _equity_lake(store)
+    _factor_lake(store)
+    result = runner.invoke(
+        app,
+        [
+            "risk", "attribute", "-s", "AAA", "--as-of", "2024-10-01",
+            "-f", "KF_MKT_RF", "-f", "KF_SMB",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    assert "common dates" in result.output
+    assert "KF_MKT_RF" in result.output
+    assert "R²" in result.output
+
+
+def test_risk_attribute_fails_without_the_factors(store: object) -> None:
+    _equity_lake(store)
+    result = runner.invoke(app, ["risk", "attribute", "-s", "AAA", "--as-of", "2024-10-01"])
+    assert result.exit_code == 2
+    assert "ken_french" in result.output
+
+
+def test_risk_attribute_refuses_without_a_risk_free_rate(store: object) -> None:
+    """Without it the instrument cannot be put on the same excess-return footing
+    as the factors, and the mismatch lands on the alpha being tested."""
+    import numpy as np
+
+    _equity_lake(store)
+    rng = np.random.default_rng(2)
+    rows = []
+    for session in [dt.date(2024, 1, 2) + dt.timedelta(days=i) for i in range(320)]:
+        as_of = dt.datetime(session.year, session.month, session.day, tzinfo=dt.UTC)
+        rows.append(
+            {
+                "source": "ken_french",
+                "dataset": "series_observations",
+                "symbol": "KF_MKT_RF",
+                "as_of": as_of,
+                "known_at": as_of,
+                "ingested_at": as_of,
+                "value": float(rng.normal(0.0, 0.009)),
+                "units": "daily return",
+                "vintage": False,
+            }
+        )
+    store.write(pl.DataFrame(rows), asset_class="factors")  # type: ignore[attr-defined]
+
+    result = runner.invoke(
+        app, ["risk", "attribute", "-s", "AAA", "--as-of", "2024-10-01", "-f", "KF_MKT_RF"]
+    )
+    assert result.exit_code == 2
+    assert "KF_RF" in result.output
+
+
+def test_risk_pca_extracts_the_common_factor(store: object) -> None:
+    _equity_lake(store)
+    result = runner.invoke(
+        app,
+        [
+            "risk", "pca",
+            "-s", "AAA", "-s", "BBB", "-s", "CCC", "-s", "DDD",
+            "--as-of", "2024-10-01", "--factors", "2",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    assert "PC1" in result.output
+    assert "useless for attribution" in result.output
+    # The universe is built from one common factor, so PC1 should dominate.
+    assert "market bet" in result.output
+
+
+def test_risk_pca_rejects_too_many_factors(store: object) -> None:
+    _equity_lake(store)
+    result = runner.invoke(
+        app,
+        ["risk", "pca", "-s", "AAA", "-s", "BBB", "--as-of", "2024-10-01", "--factors", "5"],
+    )
+    assert result.exit_code == 2
+    assert "n_factors must be between" in result.output

@@ -273,3 +273,49 @@ A given commit plus a given *data snapshot* produces identical results. It does 
 mean re-running ingest reproduces the snapshot: Yahoo restates adjusted closes,
 EDGAR receives amended filings, and exchanges delist symbols. **Snapshot before you
 research, and keep the snapshot.**
+
+## Portfolio construction and risk (Milestone 7)
+
+**`adj_close` is restated, so the research commands are not point-in-time.**
+`quantlab portfolio covariance`, `portfolio build`, `risk attribute` and `risk pca`
+compute total returns from `adj_close`, which carries dividends. They have to:
+price returns drop the dividend yield from every observation, and in an
+attribution that missing yield comes back as alpha — SPY attributes to −1.45% a
+year (t = −2.3) on price returns against +0.02% (t = 0.04) on total returns.
+
+The cost is that the provider rewrites the entire `adj_close` history each time a
+dividend is paid. A snapshot taken today therefore does **not** reproduce the
+series as it stood a year ago, and these four commands are consequently
+*ex-post* measurements of realised exposure over a fixed historical window, not
+point-in-time research inputs. They must not be used to generate a trading signal.
+The backtest engine does not use `adj_close`; it applies corporate actions on
+their own dates against raw closes, and that path remains point-in-time.
+
+**Attribution is limited to the factors that are free.** Ken French daily
+Mkt-RF/SMB/HML/RF and momentum, and nothing else. There is no quality factor, no
+betting-against-beta, no free daily international or sector factor set. A
+strategy whose exposure is to something not on that list will attribute to
+residual alpha by default — the residual is "what these five factors do not
+explain", which is not the same thing as skill. The daily factor files also lag
+the price data by roughly two months, so the most recent window is unattributable.
+
+**Statistical factors are not exposures.** `risk pca` will always find structure;
+that is what PCA does. Decomposing the correlation matrix keeps the first
+component from collapsing onto the highest-variance asset, but it does not make
+any component mean anything. Only the first is reliably interpretable, and only
+as "the common factor". The rest have no names and naming them is how a risk
+model becomes a story.
+
+**No capacity estimate is attached to a portfolio.** `portfolio build` reports
+weights, risk contributions and portfolio volatility. It does not cost the trades
+needed to reach those weights from a current book, so it cannot tell you what the
+portfolio is worth after impact or what size it survives to. Spec section 13
+forbids reporting a *strategy result* without a capacity estimate; a portfolio
+construction command is not a strategy result, but the gap is real and the
+backtest path is where capacity is enforced.
+
+**The controls are tested for mechanism, not calibrated.** The drawdown
+thresholds (−10% soft, −25% hard) and stop threshold (−20%, 5-bar cooldown) are
+round numbers, not fitted values, and deliberately so: a control fitted to the
+drawdowns in a sample is fitted to the sample. Neither has been validated against
+a live book, and neither should be expected to improve returns.

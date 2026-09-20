@@ -261,6 +261,87 @@ Neither is a finding. Both are the platform working.
 **Tests** — 93 in the signal suite. A layering violation was caught by the
 import-graph test and fixed by moving `RebalanceFrequency` out of the engine.
 
+## Milestone 7 — what was delivered
+
+**Covariance that can be inverted.** Sample, EWMA and Ledoit-Wolf shrinkage
+against two targets. The shrinkage intensity is *derived*, not chosen — short
+samples and wide universes shrink hard, long samples and narrow ones barely at
+all, and neither is a setting anyone tunes. The constant-correlation target is
+the default because the identity target is so wrong for a real universe that the
+estimator correctly declines to use it.
+
+**Four construction methods** — equal weight, inverse volatility, risk parity and
+mean-variance — reporting risk contributions alongside weights, because an
+equal-weighted book of correlated assets routinely puts most of its risk in one
+place while looking perfectly diversified on the weights. `quantlab portfolio
+build` prints both.
+
+**Constraints that refuse impossible problems.** `Constraints.long_only()` caps a
+position at 10%, so on eight names the largest possible book is 80% of capital
+against a net target of 100%. SLSQP answers that with "inequality constraints
+incompatible" and a plausible-looking weight vector that violates the
+constraints; `check_feasible` raises instead, naming the arithmetic.
+
+**Gârleanu-Pedersen dynamic trading**, solving for the aim portfolio and the
+constant trade rate rather than rebalancing all the way to the target each period.
+
+**Factor attribution with Newey-West standard errors**, answering the question the
+spec sets for it: *is this signal secretly just beta?* Validated against
+instruments whose answer is known:
+
+| | market β | SMB | HML | R² | alpha |
+| --- | --- | --- | --- | --- | --- |
+| SPY | +0.993 | −0.113 | +0.014 | 99.3% | +0.02%/yr (t = 0.04) |
+| IWM | +1.017 | **+0.926** | +0.295 | 97.5% | −1.55%/yr (t = −1.01) |
+| QQQ | +1.166 | −0.121 | **−0.338** | 95.0% | +2.90%/yr (t = 1.21) |
+| TLT | −0.002 | +0.147 | −0.108 | 3.8% | −8.44%/yr (t = −1.31) |
+| GLD | +0.142 | +0.092 | −0.028 | 3.1% | +12.44%/yr (t = 1.52) |
+
+IWM loads +0.93 on the small-cap factor because it *is* the small-cap index; QQQ
+carries the growth tilt; TLT's market beta is zero to three decimal places; the
+equity factors explain 3% of gold. SPY's alpha is zero, which is the single
+strongest end-to-end check in the platform — it only came out that way after two
+real bugs were fixed (see below).
+
+**A PCA risk model** for when no factor returns exist, and **drawdown controls and
+trailing stops**, both documented as risk management rather than alpha.
+
+### Three bugs worth recording
+
+**Price returns manufacture alpha.** Computing returns from `close` rather than
+`adj_close` drops the dividend yield from every observation. Attributing SPY that
+way produced −1.45% a year with t = −2.3 — comfortably "significant", entirely an
+artefact, and equal to SPY's 1.57% yield. A short book would have shown the same
+error as manufactured *positive* alpha. This is the failure mode the platform
+exists to catch, and it was found by checking a number whose true value was known
+rather than by reading the code.
+
+**PCA on covariance finds the loudest asset, not the market.** The first component
+of the twelve-ETF universe loaded +0.71 on a 41%-volatility oil fund and under
+0.35 on everything else. Maximising explained variance is precisely what selects
+for that. Decomposing the correlation matrix instead gives a first component
+loading −0.31 to −0.38 on every equity and credit name and 0.09 on oil.
+
+**A from-entry stop switches itself off.** Measuring the loss from the entry price
+rather than the high-water mark means a position that has run up 300% must give
+back all of it before the stop fires. Firing rates on a driftless random walk:
+6 per thousand bars from entry, 122 trailing. The positions this affects most are
+the long-held trend positions that stops are cited as helping.
+
+### Measured, not asserted
+
+* On a 40-asset, 80-observation factor panel, Ledoit-Wolf shrinkage toward the
+  constant-correlation target removes **21%** of the sample covariance error.
+  Toward the identity target it removes **none** — the shrunk estimate is about
+  **6% worse** than not shrinking at all. The derived intensity is doing its job
+  in both cases; the identity target is simply the wrong structure, and a target
+  that is wrong enough cannot be rescued by shrinking the right amount toward it.
+* A residual information ratio of 1.7 is detected **97%** of the time over six
+  years; an IR of 0.83 — a strategy most desks would fund — about **half** the
+  time; an IR of 0.42 rarely. The estimator is unbiased at every level. A single
+  t-statistic near the threshold carries almost no information, which is why the
+  platform reports a deflated Sharpe and trial count beside it.
+
 ## Not yet verified
 
 **Docker.** The `make up` acceptance criterion has still **not** been executed: the

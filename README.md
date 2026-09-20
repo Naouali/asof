@@ -132,6 +132,45 @@ Signals whose data the free catalogue cannot supply are implemented and **refuse
 run**, naming what is missing. An empty cross-section looks exactly like a signal
 with no view.
 
+## Building a portfolio
+
+Signals produce scores; this turns them into a book, and reports the risk each
+position actually carries rather than only its weight.
+
+```bash
+quantlab portfolio covariance -s SPY -s QQQ -s TLT -s GLD --as-of 2026-09-18
+quantlab portfolio build -s SPY -s QQQ -s TLT -s GLD --as-of 2026-09-18 -m risk-parity
+```
+
+An equal-weighted book of correlated assets routinely puts most of its risk in one
+place while looking perfectly diversified on the weights, so `build` prints both.
+Covariance is Ledoit-Wolf shrunk by default, with the intensity derived rather than
+chosen. `--method mean-variance` uses a **flat prior of zero** for expected returns,
+never the sample mean: sample means are noisy enough that optimising on them
+reliably produces a worse portfolio than equal weighting.
+
+Constraints that cannot be satisfied raise instead of returning something
+plausible. `Constraints.long_only()` caps a position at 10%, so on eight names the
+largest possible book is 80% of capital against a net target of 100% — SLSQP
+answers that with a weight vector that looks fine and violates the constraints.
+
+## Is it secretly just beta?
+
+```bash
+quantlab risk attribute -s IWM --as-of 2026-09-18     # against Ken French factors
+quantlab risk pca -s SPY -s TLT -s GLD --as-of 2026-09-18   # when none are available
+```
+
+Standard errors are Newey-West. Strategy returns are autocorrelated, and OLS
+standard errors on autocorrelated data come out too small — inflating every
+t-statistic toward finding alpha that is not there.
+
+Validated against instruments whose answer is known: SPY attributes to a market
+beta of 0.993 with alpha of +0.02% a year (t = 0.04); IWM loads +0.93 on the
+small-cap factor because it *is* the small-cap index; TLT's market beta is −0.002.
+Getting SPY's alpha to zero took fixing two real bugs — see
+[docs/MILESTONES.md](docs/MILESTONES.md).
+
 ## Validating a result
 
 Every backtest records itself as a trial, and the count deflates the Sharpe it

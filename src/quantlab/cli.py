@@ -18,6 +18,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Annotated, NoReturn
 
+import numpy as np
 import polars as pl
 import typer
 from rich.console import Console
@@ -48,12 +49,20 @@ signals_app = typer.Typer(name="signals", help="The signal library.", no_args_is
 validate_app = typer.Typer(
     name="validate", help="Overfitting statistics and the trial registry.", no_args_is_help=True
 )
+portfolio_app = typer.Typer(
+    name="portfolio", help="Covariance estimation and portfolio construction.", no_args_is_help=True
+)
+risk_app = typer.Typer(
+    name="risk", help="Factor attribution, risk models and controls.", no_args_is_help=True
+)
 app.add_typer(worker_app)
 app.add_typer(scheduler_app)
 app.add_typer(data_app)
 app.add_typer(costs_app)
 app.add_typer(signals_app)
 app.add_typer(validate_app)
+app.add_typer(portfolio_app)
+app.add_typer(risk_app)
 
 console = Console()
 err_console = Console(stderr=True)
@@ -1042,3 +1051,366 @@ def _heartbeat_healthcheck(name: str) -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(app())
+
+
+# --------------------------------------------------------------------- portfolio --
+def _returns_frame(symbols: list[str], as_of: str, lookback: int) -> pl.DataFrame:
+    """Daily **total** returns for a universe, through a point-in-time snapshot.
+
+    Returned as a long frame carrying its own ``as_of`` column so that anything
+    joining against it joins on the date. Symbols are dropped, loudly, if they
+    lack a complete history over the window: padding a short history with zeros
+    would understate both the volatility and the correlation of the instruments
+    with least data, which is the opposite of conservative.
+
+    **Total return, not price return.** Returns are computed from ``adj_close``,
+    which carries dividends. Using the raw close instead drops the dividend yield
+    from the return series, and in an attribution that missing yield reappears as
+    negative alpha: SPY over the last five years attributes to -1.45% a year on
+    price returns (t = -2.3, comfortably "significant") and to +0.02% a year
+    (t = 0.04) on total returns. The second number is the true one. A short book
+    would show the same error with the sign reversed, as manufactured alpha.
+
+    The cost of this choice is that ``adj_close`` is **restated**: the provider
+    rewrites the whole history each time a dividend is paid, so it is not
+    point-in-time and a snapshot taken today does not reproduce what the series
+    looked like a year ago. That is acceptable for measuring realised exposure
+    over a fixed historical window, which is what these commands do. It is not
+    acceptable in the backtest engine, which is why that path uses the raw close
+    with corporate actions applied on their own dates instead.
+    """
+    from quantlab.data.store import Store
+
+    snapshot = Store(get_settings().layout).as_of(as_of)
+    bars = snapshot.ohlcv_daily(symbols=symbols)
+    if bars.height == 0:
+        err_console.print(
+            f"[red]no daily bars for any of {', '.join(symbols)} at {as_of}[/red] -- "
+            "ingest them first: quantlab data ingest"
+        )
+        raise typer.Exit(code=2)
+
+    price = "adj_close" if "adj_close" in bars.columns else None
+    if price is None:
+        err_console.print(
+            "[red]these bars carry no adj_close[/red], so only price returns are "
+            "available. Dividends would be missing from every return, and in an "
+            "attribution that shows up as negative alpha roughly equal to the "
+            "dividend yield. Refusing rather than reporting a number that is wrong "
+            "by a known amount."
+        )
+        raise typer.Exit(code=2)
+
+    wide = bars.sort("as_of").pivot(index="as_of", on="symbol", values=price).tail(lookback + 1)
+    names = [c for c in wide.columns if c != "as_of"]
+    complete = [c for c in names if wide[c].null_count() == 0]
+    dropped = sorted(set(names) - set(complete))
+    if dropped:
+        err_console.print(
+            f"[yellow]dropped {len(dropped)}[/yellow] with gaps over the window: "
+            f"{', '.join(dropped)}"
+        )
+    if not complete:
+        err_console.print("[red]no instrument has a complete history over the window[/red]")
+        raise typer.Exit(code=2)
+    if wide.height < 4:
+        err_console.print(f"[red]only {wide.height} bars in the window[/red]")
+        raise typer.Exit(code=2)
+
+    # The return dated T is the move from T-1 to T, so it drops the first row.
+    return wide.select(
+        pl.col("as_of"),
+        *[(pl.col(c) / pl.col(c).shift(1) - 1.0).alias(c) for c in complete],
+    ).slice(1)
+
+
+def _returns_matrix(symbols: list[str], as_of: str, lookback: int) -> tuple[np.ndarray, list[str]]:
+    frame = _returns_frame(symbols, as_of, lookback)
+    names = [c for c in frame.columns if c != "as_of"]
+    if len(names) < 2:
+        err_console.print("[red]need at least two instruments with a complete history[/red]")
+        raise typer.Exit(code=2)
+    return frame.select(names).to_numpy(), names
+
+
+@portfolio_app.command("covariance")
+def portfolio_covariance(
+    symbols: Annotated[list[str], typer.Option("--symbol", "-s", help="Instrument. Repeatable.")],
+    as_of: Annotated[str, typer.Option("--as-of", help="Point-in-time date.")],
+    lookback: Annotated[int, typer.Option("--lookback", help="Trading days of history.")] = 504,
+) -> None:
+    """Compare covariance estimators on a real universe.
+
+    The number to look at is the condition number. A sample covariance matrix on a
+    wide universe is routinely conditioned in the millions, and an optimiser
+    inverting it is amplifying estimation error rather than using information --
+    which is where confident, enormous, meaningless positions come from.
+    """
+    from quantlab.portfolio import ewma_covariance, ledoit_wolf_covariance, sample_covariance
+
+    returns, names = _returns_matrix(symbols, as_of, lookback)
+    estimates = [
+        sample_covariance(returns),
+        ewma_covariance(returns),
+        ledoit_wolf_covariance(returns, target="constant_correlation"),
+        ledoit_wolf_covariance(returns, target="identity"),
+    ]
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("estimator")
+    table.add_column("shrinkage", justify="right")
+    table.add_column("condition", justify="right")
+    table.add_column("mean vol", justify="right")
+    for estimate in estimates:
+        table.add_row(
+            estimate.method,
+            f"{estimate.shrinkage:.3f}",
+            f"{estimate.condition:,.0f}",
+            f"{estimate.volatilities().mean():.1%}",
+        )
+    console.print(table)
+    console.print(
+        f"\n{len(names)} instruments, {returns.shape[0]:,} observations "
+        f"({estimates[0].observations_per_parameter:.1f} per free parameter)."
+    )
+    if not estimates[0].is_usable:
+        console.print(
+            "[yellow]The sample estimate is effectively singular.[/yellow] Shrink it, "
+            "or use fewer instruments -- do not invert it."
+        )
+
+
+@portfolio_app.command("build")
+def portfolio_build(
+    symbols: Annotated[list[str], typer.Option("--symbol", "-s", help="Instrument. Repeatable.")],
+    as_of: Annotated[str, typer.Option("--as-of", help="Point-in-time date.")],
+    method: Annotated[
+        str,
+        typer.Option(
+            "--method",
+            "-m",
+            help="equal, inverse-vol, risk-parity or mean-variance.",
+        ),
+    ] = "risk-parity",
+    lookback: Annotated[int, typer.Option("--lookback", help="Trading days of history.")] = 504,
+    max_position: Annotated[
+        float, typer.Option("--max-position", help="Cap on any one weight.")
+    ] = 0.25,
+    risk_aversion: Annotated[
+        float, typer.Option("--risk-aversion", help="Mean-variance only.")
+    ] = 5.0,
+) -> None:
+    """Construct a portfolio, and report the risk each position actually carries.
+
+    The weights are the less interesting half of the output. Risk contributions
+    are what a book is actually exposed to, and an equal-weighted portfolio of
+    correlated assets routinely puts most of its risk in one place while looking
+    perfectly diversified on the weights.
+
+    Expected returns for ``mean-variance`` are **not** estimated from the sample.
+    Sample means are so noisy that optimising on them reliably produces a worse
+    portfolio than equal weighting; this command uses a flat prior, so what you
+    see is the risk model's view alone.
+    """
+    from quantlab.portfolio import (
+        Constraints,
+        equal_weight,
+        inverse_volatility,
+        ledoit_wolf_covariance,
+        mean_variance,
+        risk_contributions,
+        risk_parity,
+    )
+
+    returns, names = _returns_matrix(symbols, as_of, lookback)
+    estimate = ledoit_wolf_covariance(returns)
+    matrix = estimate.matrix
+
+    limits = Constraints(max_position=max_position, min_position=0.0, net_range=(1.0, 1.0))
+    try:
+        if method == "equal":
+            allocation = equal_weight(len(names))
+        elif method == "inverse-vol":
+            allocation = inverse_volatility(matrix)
+        elif method == "risk-parity":
+            allocation = risk_parity(matrix)
+        elif method == "mean-variance":
+            allocation = mean_variance(
+                np.zeros(len(names)), matrix, risk_aversion=risk_aversion, constraints=limits
+            )
+        else:
+            err_console.print(
+                f"[red]unknown method {method!r}[/red]; known: equal, inverse-vol, "
+                "risk-parity, mean-variance"
+            )
+            raise typer.Exit(code=2)
+    except ValueError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+
+    contributions = risk_contributions(allocation.weights, matrix)
+    shares = contributions / contributions.sum()
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("symbol")
+    table.add_column("weight", justify="right")
+    table.add_column("vol", justify="right")
+    table.add_column("risk share", justify="right")
+    volatilities = estimate.volatilities()
+    order = np.argsort(allocation.weights)[::-1]
+    for i in order:
+        table.add_row(
+            names[i],
+            f"{allocation.weights[i]:+.2%}",
+            f"{volatilities[i]:.1%}",
+            f"{shares[i]:.1%}",
+        )
+    console.print(table)
+
+    console.print(
+        f"\n{allocation.method}: {allocation.effective_positions:.1f} effective positions "
+        f"out of {len(names)}; portfolio volatility "
+        f"{math.sqrt(float(allocation.weights @ matrix @ allocation.weights) * 252):.1%}."
+    )
+    if not allocation.converged:
+        console.print("[yellow]the optimiser did not converge[/yellow] -- treat with suspicion")
+    violations = limits.violations(allocation.weights)
+    if violations:
+        console.print(f"[yellow]constraints not met:[/yellow] {'; '.join(violations)}")
+    console.print(f"[dim]covariance: {estimate.describe()}[/dim]")
+
+
+# -------------------------------------------------------------------------- risk --
+@risk_app.command("attribute")
+def risk_attribute(
+    symbol: Annotated[str, typer.Option("--symbol", "-s", help="Instrument to attribute.")],
+    as_of: Annotated[str, typer.Option("--as-of", help="Point-in-time date.")],
+    lookback: Annotated[int, typer.Option("--lookback", help="Trading days of history.")] = 1260,
+    factors: Annotated[
+        list[str] | None,
+        typer.Option("--factor", "-f", help="Factor series symbol in the lake. Repeatable."),
+    ] = None,
+) -> None:
+    """Answer the question a risk model exists for: is this secretly just beta?
+
+    Returns are joined to the factors **on the date**, and the risk-free rate is
+    subtracted from the instrument so that both sides are excess returns over the
+    same rate. Getting either wrong loads the mismatch straight onto the
+    intercept, which is precisely the number being tested.
+
+    Standard errors are Newey-West, not OLS. Returns are autocorrelated, and OLS
+    standard errors on autocorrelated data come out too small -- inflating every
+    t-statistic in the direction of finding alpha that is not there.
+    """
+    from quantlab.data.store import Store
+    from quantlab.risk import attribute
+
+    wanted = tuple(factors or ("KF_MKT_RF", "KF_SMB", "KF_HML", "KF_MOM"))
+    snapshot = Store(get_settings().layout).as_of(as_of)
+    series = snapshot.series(symbols=[*wanted, "KF_RF"])
+    if series.height == 0:
+        err_console.print(
+            f"[red]none of {', '.join(wanted)} is in the lake[/red] -- ingest the "
+            "academic factor datasets first:\n"
+            "  quantlab data ingest -f ken_french.series_observations"
+        )
+        raise typer.Exit(code=2)
+
+    factor_wide = series.sort("as_of").pivot(index="as_of", on="symbol", values="value")
+    available = [name for name in wanted if name in factor_wide.columns]
+    if not available:
+        err_console.print(
+            f"[red]no usable factor columns among {', '.join(wanted)}[/red]; "
+            f"the lake has {', '.join(sorted(set(factor_wide.columns) - {'as_of'}))}"
+        )
+        raise typer.Exit(code=2)
+    if "KF_RF" not in factor_wide.columns:
+        err_console.print(
+            "[red]KF_RF is not in the lake[/red] -- without the risk-free rate the "
+            "instrument cannot be put on the same excess-return footing as the "
+            "factors, and the mismatch would land on the alpha"
+        )
+        raise typer.Exit(code=2)
+
+    returns = _returns_frame([symbol], as_of, lookback)
+    if symbol not in returns.columns:
+        err_console.print(f"[red]{symbol} has no complete history over the window[/red]")
+        raise typer.Exit(code=2)
+
+    # An inner join on the calendar date, not the instant: a daily bar is stamped
+    # at its session close (20:00 UTC for a US listing) while a daily series is
+    # stamped at midnight, so joining on the raw timestamp matches nothing.
+    # Aligning them positionally instead would silently regress one series
+    # against another shifted by every session either side is missing.
+    joined = (
+        returns.select(pl.col("as_of").dt.date().alias("date"), pl.col(symbol).alias("_asset"))
+        .join(
+            factor_wide.select(
+                pl.col("as_of").dt.date().alias("date"),
+                pl.col("KF_RF"),
+                *[pl.col(c) for c in available],
+            ),
+            on="date",
+            how="inner",
+        )
+        .drop_nulls()
+        .sort("date")
+    )
+    if joined.height < 60:
+        err_console.print(
+            f"[red]only {joined.height} dates are common to the instrument and the "
+            f"factors[/red] -- too few to identify {len(available)} loadings and an "
+            "intercept"
+        )
+        raise typer.Exit(code=2)
+
+    excess = (joined["_asset"] - joined["KF_RF"]).to_numpy()
+    result = attribute(excess, joined.select(available).to_numpy(), factor_names=tuple(available))
+    first, last = joined["date"].item(0), joined["date"].item(-1)
+    console.print(
+        f"[bold]{symbol}[/bold] excess of KF_RF, {joined.height:,} common dates "
+        f"({first:%Y-%m-%d} to {last:%Y-%m-%d})"
+    )
+    console.print(result.describe())
+
+
+@risk_app.command("pca")
+def risk_pca(
+    symbols: Annotated[list[str], typer.Option("--symbol", "-s", help="Instrument. Repeatable.")],
+    as_of: Annotated[str, typer.Option("--as-of", help="Point-in-time date.")],
+    lookback: Annotated[int, typer.Option("--lookback", help="Trading days of history.")] = 504,
+    n_factors: Annotated[int, typer.Option("--factors", help="Components to keep.")] = 3,
+) -> None:
+    """Extract statistical risk factors when no factor returns are available.
+
+    A principal component is a direction of variance, not an economic exposure.
+    The first one is almost always "the market" whether or not anyone measured it;
+    the rest have no names, and naming them is how a risk model becomes a story.
+    """
+    from quantlab.risk import pca_risk_model
+
+    returns, names = _returns_matrix(symbols, as_of, lookback)
+    try:
+        model = pca_risk_model(returns, n_factors=n_factors)
+    except ValueError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("symbol")
+    for k in range(model.n_factors):
+        table.add_column(f"PC{k + 1}", justify="right")
+    table.add_column("specific vol", justify="right")
+    for i, name in enumerate(names):
+        table.add_row(
+            name,
+            *[f"{model.loadings[i, k]:+.3f}" for k in range(model.n_factors)],
+            f"{math.sqrt(model.specific_variance[i] * 252):.1%}",
+        )
+    console.print(table)
+    console.print(f"\n{model.describe()}")
+    if model.first_factor_share > 0.5:
+        console.print(
+            f"[yellow]PC1 carries {model.first_factor_share:.0%} of the variance.[/yellow] "
+            "A strategy loading on it is a market bet however its signal is described."
+        )

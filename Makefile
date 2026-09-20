@@ -105,6 +105,11 @@ trials:  ## Show the trial registry -- what is deflating your Sharpe ratios
 library:  ## Empirical-Bayes shrinkage across every signal family
 	$(COMPOSE) exec -T worker quantlab validate library
 
+attribute:  ## Is it secretly just beta? make attribute SYMBOL=SPY
+	@test -n "$(SYMBOL)" || { echo "usage: make attribute SYMBOL=<ticker> [AS_OF=<date>]"; exit 2; }
+	$(COMPOSE) exec -T worker quantlab risk attribute -s $(SYMBOL) \
+		--as-of $(or $(AS_OF),$(shell date -u +%F))
+
 capacity:  ## Break-even AUM: make capacity ALPHA=25 TURNOVER=0.4
 	@test -n "$(ALPHA)" || { echo "usage: make capacity ALPHA=<bps/rebalance> TURNOVER=<fraction>"; exit 2; }
 	$(COMPOSE) exec -T worker quantlab costs capacity --alpha $(ALPHA) --turnover $(TURNOVER)
