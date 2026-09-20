@@ -14,7 +14,7 @@ and committed.
 | 7 | Portfolio construction: vol targeting, risk parity, turnover-aware optimisation, factor risk model | **complete** |
 | 8 | Reporting: tearsheets with capacity and validation statistics | **complete** |
 | 9 | Remaining data sources: SEC EDGAR, CFTC COT, EIA, academic factors, options collector | **complete** |
-| 10 | Event-driven engine and Tier 2 signals | not started |
+| 10 | Event-driven engine and Tier 2 signals | **complete** |
 | 11 | Paper trading loop, dashboard, decay monitor | not started |
 | 12 | Documentation: data catalogue, how-to-add-a-signal, LIMITATIONS.md | in progress |
 
@@ -473,6 +473,63 @@ space has been searched. `quantlab validate anomalies` places a result in it.
 - SPX option quote quality by moneyness: near the money, implied vol median 0.14
   and relative spread 1.2%; below half spot, implied vol reaches 4.49 and spreads
   7%; above 1.5× spot, spreads 16%.
+
+## Milestone 10 — what was delivered
+
+**A second backtest engine, and a reason to trust both.** The vectorised engine
+computes a bar's position from the target weights alone, which is fast and
+structurally cannot express a rule that depends on the path — a stop-loss
+triggers on what a position has done since it was opened, which the weights do
+not know. The event-driven engine resolves ordered intra-bar events and lets
+rules modify the target before it trades.
+
+With no rules attached the two engines agree **bit for bit**: maximum relative
+equity difference 0.000e+00 across 400 bars and six instruments, identical
+Sharpe, identical cost decomposition. That is the point of building it this way.
+Two independent implementations of one convention agreeing is evidence the
+convention is implemented; a divergence would be a bug in one of them rather than
+a difference of opinion. It also gives a free diagnostic — attach a rule, and the
+size of the change is the part of the result that depends on the rule rather than
+on the signal.
+
+What it is honestly not: a higher-fidelity execution simulation. With daily bars
+there is no intraday path, so a stop still fills at a price the panel supplies.
+What it adds is sequencing — a delisting settles before a rebalance sizes into
+the name, a stop is evaluated on the position carried *into* the bar — and those
+orderings change results and would otherwise be decided by accident.
+
+**Two Tier 2 signals**, both built on data Milestone 9 delivered, and both with a
+sign convention that reversed produces a strategy which pays a risk premium every
+period instead of earning it.
+
+`positioning.hedger_pressure` — commercial hedging pressure from the CFTC data.
+Keynes, Hicks, Bessembinder, De Roon: hedgers are net short, speculators take the
+other side and are compensated for it, so an unusually short commercial book is a
+long signal. Normalised over a trailing 156 weeks rather than full history,
+because the CFTC reclassifies traders between categories and a z-score against a
+mean containing a reclassification is measuring the reclassification. Runs on the
+real lake across eleven contracts.
+
+`volatility.vix_term_structure` — short volatility when the curve is steep, flat
+when it inverts. The scale-in bound of 1.15 is the observed median slope over
+4,276 days rather than a fitted parameter.
+
+### Measured on the episodes that mattered
+
+The VIX signal's inversion rule, on the two events that destroyed
+short-volatility strategies:
+
+| | Position going in | Went flat |
+| --- | --- | --- |
+| Feb 2018 | −0.62 on 1 February | 2 February, the day before VIX tripled 17 → 37 |
+| Feb 2020 | −0.57 on 18 February | 24 February, having scaled down from the 20th |
+
+It de-risked before the worst day both times, and both times only after taking
+the first leg — VIX had already run 13.5 to 17.3 before the 2018 exit fired. It
+is a de-risking rule, not protection against a gap, and it works only when the
+curve inverts *before* the crash rather than *with* it. The exits are also
+measured at the close while the platform trades the next open, and VIX gapped
+overnight on both occasions.
 
 ## Not yet verified
 

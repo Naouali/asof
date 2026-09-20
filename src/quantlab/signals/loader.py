@@ -12,6 +12,8 @@ import importlib
 __all__ = ["SIGNAL_MODULES", "load_all_signals"]
 
 SIGNAL_MODULES: tuple[str, ...] = (
+    "quantlab.signals.positioning.hedger_pressure",
+    "quantlab.signals.volatility.term_structure",
     "quantlab.signals.crypto.carry",
     "quantlab.signals.equity.profitability",
     "quantlab.signals.futures.basis",

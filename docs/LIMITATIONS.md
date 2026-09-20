@@ -493,3 +493,52 @@ is tested against a fixture hand-built from EIA's documented v2 envelope. That
 asserts it handles the documented shape, not the actual one — the same debt FRED
 carried until a key arrived. The release-date arithmetic, which is where the
 look-ahead risk lives, needs no key and is fully tested.
+
+## The event-driven engine (Milestone 10)
+
+**It is not a higher-fidelity simulation.** With daily bars there is no intraday
+path, so a stop still fills at a price the panel supplies rather than at the price
+it would really have filled at somewhere inside the day. What the engine adds is
+sequencing and path dependence. A genuinely event-driven simulation needs intraday
+data, which no free source supplies at any useful history.
+
+**It is slower, and that is structural.** A Python bar loop with rule dispatch
+cannot match a vectorised numpy pass. Use it when a rule depends on the path and
+the vectorised engine for everything else — they agree exactly when no rule is
+attached, so there is nothing lost by choosing on speed.
+
+**A rule that improves a backtest is suspicious.** M7 said this about drawdown
+controls and it is more true here: a stop that raises the Sharpe of a losing
+strategy is almost always fitted to that sample's particular drawdowns. The
+honest use of the two engines is to measure how much of a result depends on the
+rule, not to search for the rule that makes the result look best — and every such
+search is a trial the deflated Sharpe should be counting.
+
+## Tier 2 signals (Milestone 10)
+
+**Hedging pressure is weekly, and that is a hard ceiling.** Fifty-two observations
+a year caps the achievable Sharpe however real the effect is, and caps how much
+any parameter fitted to it can be trusted. The "commercial" category is an
+administrative self-classification, so before the 2006 disaggregated report a
+swap dealer hedging an index sits in the same number as a farmer hedging a crop.
+
+**The VIX term-structure signal is not the trade.** VIX spot is not investable.
+Any implementation goes through futures, options or ETPs, each with a roll cost
+this signal does not model and which has historically consumed much of the
+premium. A backtest treating the index level as tradeable is not describing
+anything anyone could have done.
+
+**Its inversion rule is de-risking, not protection.** Measured on the two
+episodes that destroyed short-volatility strategies: it was −0.62 short on 1
+February 2018 and went flat on the 2nd, the day before VIX tripled — but only
+after VIX had already run from 13.5 to 17.3. In February 2020 it scaled out over
+four days. It works when the curve inverts *before* the crash rather than *with*
+it, and nothing guarantees that ordering. Those exits are also measured at the
+close while the platform trades the next open, and VIX gapped overnight on both
+occasions, so a realistic implementation is worse than the figures above.
+
+**And the Sharpe ratio is the wrong statistic for it.** Selling volatility earns
+a little most of the time and occasionally loses years of it in a week. The
+deflated Sharpe corrects for how hard you searched, not for a return distribution
+whose left tail is the entire story. Read the skew and excess kurtosis on the
+tearsheet.

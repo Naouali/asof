@@ -1,7 +1,8 @@
 """Backtest engines: vectorised research, event-driven execution, paper trading.
 
-Milestone 4 delivers the vectorised engine. All three engines share the invariants
-in spec section 6.4, and they are enforced rather than assumed:
+Milestone 4 delivers the vectorised engine and Milestone 10 the event-driven one.
+All three engines share the invariants in spec section 6.4, and they are enforced
+rather than assumed:
 
 * No forward-filling beyond a configured, documented staleness limit.
 * An explicit rebalance-time convention -- signal on the close of T, traded at the
@@ -18,6 +19,12 @@ Typical use::
     panel = Panel.from_frame(prices)
     result = VectorisedBacktest(BacktestConfig()).run(panel, weights)
     print(result.summary())
+
+The two research engines are equivalent by construction: with no rules attached,
+:class:`EventDrivenBacktest` reproduces :class:`VectorisedBacktest` bit for bit,
+and a test asserts it. Use the vectorised one for throughput and the event-driven
+one when a rule depends on the path -- a stop-loss triggers on what a position
+has done since it was opened, which the target weights do not know.
 """
 
 from __future__ import annotations
@@ -29,6 +36,13 @@ from quantlab.backtest.conventions import (
     RebalanceFrequency,
     StalenessPolicy,
 )
+from quantlab.backtest.event_driven import (
+    EventDrivenBacktest,
+    Rule,
+    StopLossRule,
+    TradingHaltRule,
+)
+from quantlab.backtest.events import Event, EventKind, PortfolioState
 from quantlab.backtest.panel import Panel
 from quantlab.backtest.results import BacktestResult, PerformanceStats
 from quantlab.backtest.vectorised import BacktestConfig, VectorisedBacktest
@@ -38,12 +52,19 @@ __all__ = [
     "AccountingError",
     "BacktestConfig",
     "BacktestResult",
+    "Event",
+    "EventDrivenBacktest",
+    "EventKind",
     "ExecutionTiming",
     "Ledger",
     "Panel",
     "PerformanceStats",
+    "PortfolioState",
     "RebalanceFrequency",
     "ReconciliationReport",
+    "Rule",
     "StalenessPolicy",
+    "StopLossRule",
+    "TradingHaltRule",
     "VectorisedBacktest",
 ]
