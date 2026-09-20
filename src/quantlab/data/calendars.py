@@ -13,9 +13,11 @@ Venue codes are ISO MICs where one exists (`XNYS`, `XLON`), plus `24/7` for cryp
 
 from __future__ import annotations
 
+import calendar as stdlib_calendar
 import datetime as dt
 import functools
 from collections.abc import Sequence
+from functools import lru_cache
 
 import exchange_calendars as xcals
 
@@ -190,3 +192,92 @@ def session_closes(venue: str, days: Sequence[dt.date]) -> list[dt.datetime | No
         else:
             out.append(None)
     return out
+
+
+# ======================================================================================
+# US federal holidays
+# ======================================================================================
+# Federal agencies do not publish on federal holidays, and the federal calendar is
+# not the exchange calendar: the NYSE trades on Columbus Day and Veterans Day and
+# closes on Good Friday, which is not a federal holiday at all. Using an exchange
+# calendar to predict when a government report is released is wrong in both
+# directions, so the rules are written out here.
+#
+# `pandas.tseries.holiday` has these, but pandas is banned in this repository
+# (see tests/unit/test_repo_structure.py) and the rules are eleven lines of
+# arithmetic.
+
+#: Juneteenth became a federal holiday when signed into law on 2021-06-17.
+JUNETEENTH_FIRST_YEAR = 2021
+
+
+def _nth_weekday(year: int, month: int, weekday: int, n: int) -> dt.date:
+    """The ``n``-th ``weekday`` of a month; ``n = -1`` means the last one."""
+    if n > 0:
+        first = dt.date(year, month, 1)
+        offset = (weekday - first.weekday()) % 7
+        return first + dt.timedelta(days=offset + 7 * (n - 1))
+    last_day = stdlib_calendar.monthrange(year, month)[1]
+    last = dt.date(year, month, last_day)
+    return last - dt.timedelta(days=(last.weekday() - weekday) % 7)
+
+
+def _observed(day: dt.date) -> dt.date:
+    """A fixed-date holiday falling at a weekend is observed on the nearest weekday."""
+    if day.weekday() == 5:  # Saturday -> the Friday before
+        return day - dt.timedelta(days=1)
+    if day.weekday() == 6:  # Sunday -> the Monday after
+        return day + dt.timedelta(days=1)
+    return day
+
+
+@lru_cache(maxsize=256)
+def federal_holidays(year: int) -> frozenset[dt.date]:
+    """Observed US federal holidays in ``year``.
+
+    Inauguration Day is deliberately excluded: it is a holiday only for federal
+    employees in the DC area, and CFTC publication is not suspended for it.
+    """
+    days = [
+        _nth_weekday(year, 1, 0, 3),  # Martin Luther King Jr. Day
+        _nth_weekday(year, 2, 0, 3),  # Washington's Birthday
+        _nth_weekday(year, 5, 0, -1),  # Memorial Day
+        _observed(dt.date(year, 7, 4)),  # Independence Day
+        _nth_weekday(year, 9, 0, 1),  # Labor Day
+        _nth_weekday(year, 10, 0, 2),  # Columbus Day
+        _observed(dt.date(year, 11, 11)),  # Veterans Day
+        _nth_weekday(year, 11, 3, 4),  # Thanksgiving
+        _observed(dt.date(year, 12, 25)),  # Christmas
+    ]
+    if year >= JUNETEENTH_FIRST_YEAR:
+        days.append(_observed(dt.date(year, 6, 19)))
+
+    # New Year's Day is the one holiday whose observance can cross a year
+    # boundary, so it is handled by asking which new year lands *in* this year.
+    # A Saturday 1 January is observed on 31 December of the year before -- as in
+    # 1993, 2021 and 2027 -- and that Friday is exactly when a government report
+    # would otherwise be released. Filing it under the wrong year hides it from
+    # every lookup, since a date is only ever sought in its own year's set.
+    for new_year in (dt.date(year, 1, 1), dt.date(year + 1, 1, 1)):
+        observed = _observed(new_year)
+        if observed.year == year:
+            days.append(observed)
+    return frozenset(days)
+
+
+def is_federal_holiday(day: dt.date) -> bool:
+    return day in federal_holidays(day.year)
+
+
+def is_federal_workday(day: dt.date) -> bool:
+    return day.weekday() < 5 and not is_federal_holiday(day)
+
+
+def next_federal_workday(day: dt.date, *, inclusive: bool = True) -> dt.date:
+    """The first federal working day on or after ``day``."""
+    candidate = day if inclusive else day + dt.timedelta(days=1)
+    for _ in range(14):
+        if is_federal_workday(candidate):
+            return candidate
+        candidate += dt.timedelta(days=1)
+    raise ValueError(f"no federal working day within a fortnight of {day}")

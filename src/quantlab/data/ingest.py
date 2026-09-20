@@ -225,21 +225,31 @@ def _coverage_regressions(
     """
     if frame.height == 0:
         return []
+
+    # Grouped by the schema's identity columns, not by symbol alone. One symbol
+    # can carry several independent series in the same dataset -- a CFTC contract
+    # appears under the legacy, disaggregated and TFF reports, which begin in
+    # 1992, 2006 and 2006 -- and comparing one against another reports a
+    # regression on every ingest. A detector that cries wolf is a detector people
+    # learn to ignore, and this one is the only defence against Yahoo's silent
+    # truncation.
+    keys = [c for c in get_schema(dataset).key if c in frame.columns]
     existing = (
         store.scan(dataset, source=source, dedup=False)
-        .group_by("symbol")
+        .group_by(keys)
         .agg(pl.col("as_of").min().alias("held_from"))
         .collect()
     )
     if existing.height == 0:
         return []
 
-    incoming = frame.group_by("symbol").agg(pl.col("as_of").min().alias("fetched_from"))
-    merged = existing.join(incoming, on="symbol", how="inner")
+    incoming = frame.group_by(keys).agg(pl.col("as_of").min().alias("fetched_from"))
+    merged = existing.join(incoming, on=keys, how="inner")
     short = merged.filter(pl.col("fetched_from") > pl.col("held_from") + pl.duration(days=10))
     return [
-        f"{row['symbol']}: held from {row['held_from'].date()} but this fetch "
-        f"started at {row['fetched_from'].date()}"
+        f"{' / '.join(str(row[k]) for k in keys)}: held from "
+        f"{row['held_from'].date()} but this fetch started at "
+        f"{row['fetched_from'].date()}"
         for row in short.iter_rows(named=True)
     ]
 

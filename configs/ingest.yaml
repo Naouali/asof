@@ -64,6 +64,40 @@ jobs:
     symbols: [aapl.us, msft.us]
 
   # --------------------------------------------------------- academic factors --
+  # ------------------------------------------------------------ positioning ----
+  # Weekly futures positioning. `as_of` is the Tuesday snapshot and `known_at` is
+  # the Friday 15:30 ET release -- a three-day gap that is the most common
+  # look-ahead bias in published COT research. Pre-1992 data is refused: the CFTC
+  # compiled it retrospectively, so it was never knowable at its report date.
+  - fetcher: cftc_cot.positioning
+    options:
+      report: legacy
+    description: >-
+      Legacy futures-only positioning. The only COT report with deep history
+      (1992 weekly), and the source of the non-commercial series every published
+      COT signal is built on.
+    start: "1992-09-30"
+    symbols: ["13874A", "209742", "002602", "001602", "088691", "084691", "043602", "042601", "099741", "097741", "098662"]
+
+  - fetcher: cftc_cot.positioning
+    options:
+      report: disaggregated
+    description: >-
+      Splits the legacy commercial bucket into producers and swap dealers. A swap
+      dealer hedging an index position is not a producer hedging a crop, and the
+      legacy series conflates them. Begins 2006.
+    start: "2006-06-13"
+    symbols: ["002602", "001602", "088691", "084691"]
+
+  - fetcher: cftc_cot.positioning
+    options:
+      report: tff
+    description: >-
+      Traders in Financial Futures: dealers, asset managers, leveraged funds.
+      The financial-market analogue of the disaggregated report. Begins 2006.
+    start: "2006-06-13"
+    symbols: ["13874A", "209742", "043602", "042601", "099741", "097741", "098662"]
+
   - fetcher: ken_french.series_observations
     description: >-
       Daily Fama-French factors and momentum. The accepted benchmark for any

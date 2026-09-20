@@ -274,6 +274,35 @@ DATASETS: dict[str, DatasetSchema] = {
         key=("symbol", "metric", "fiscal_period"),
         required=("metric",),
     ),
+    "positioning": DatasetSchema(
+        name="positioning",
+        description=(
+            "Aggregate trader positioning, one row per (symbol, category, measure). "
+            "`as_of` is the SNAPSHOT date -- the Tuesday a Commitments of Traders "
+            "report counts positions on -- and `known_at` is the RELEASE instant, "
+            "the following Friday at 15:30 America/New_York. The gap between them "
+            "is three days wide and is the single most common look-ahead bias in "
+            "published COT research: the Tuesday number simply did not exist until "
+            "Friday afternoon. No CFTC payload carries the release date, so it is "
+            "derived, and rows whose release cannot be established honestly are "
+            "refused rather than dated optimistically."
+        ),
+        columns={
+            "report": pl.Utf8(),
+            "category": pl.Utf8(),
+            "measure": pl.Utf8(),
+            "value": pl.Float64(),
+            "contract_units": pl.Utf8(),
+            "exchange": pl.Utf8(),
+        },
+        # `report` is part of the identity because the reports overlap: the
+        # legacy and disaggregated reports both publish a total open interest for
+        # the same contract and Tuesday, and `other_reportable` is a category in
+        # two of the three. Without it those rows share a key and deduplication
+        # silently keeps one taxonomy's number under the other's name.
+        key=("symbol", "report", "category", "measure"),
+        required=("report", "category", "measure"),
+    ),
     "instruments": DatasetSchema(
         name="instruments",
         description=(
