@@ -75,7 +75,12 @@ VENUE_ALIASES: dict[str, str] = {
     "otc markets otcpk": "XNYS",
     "otc markets otcqb": "XNYS",
     "otc markets otcqx": "XNYS",
+    "otc markets otcid": "XNYS",
     "otc markets": "XNYS",
+    # Cboe's US equity venues, where a great many ETFs are listed. Same hours and
+    # holidays as the NYSE.
+    "cboe us": "XNYS",
+    "cboe": "XNYS",
     "pnk": "XNYS",
     "otc": "XNYS",
     "lse": "XLON",
