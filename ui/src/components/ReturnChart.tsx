@@ -79,10 +79,11 @@ export function ReturnChart({ points, today, who }: { points: ReturnPoint[]; tod
       if (month === last) return;
       last = month;
       if (index === 0) return;
-      months.push({ x: x(index), label: month === 0 ? `${monthName(month).slice(0, 3)} ${String(date.getUTCFullYear()).slice(2)}` : monthName(month).slice(0, 3) });
+      // Every month carries its year: a portfolio's line runs across two or three of them.
+      months.push({ x: x(index), label: `${monthName(month).slice(0, 3)} ${String(date.getUTCFullYear()).slice(2)}` });
     });
     // Few enough labels that they never touch.
-    const every = Math.ceil(months.length / Math.max(1, Math.floor(innerW / 64)));
+    const every = Math.ceil(months.length / Math.max(1, Math.floor(innerW / 76)));
     return { x, y, innerW, member: line((point) => point.member_pct), follower: line((point) => point.follower_pct), months: months.filter((_, index) => index % every === 0), ticks: niceTicks(min, max) };
   }, [points, width]);
 
