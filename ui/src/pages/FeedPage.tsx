@@ -15,7 +15,7 @@ type KindFilter = "all" | Exclude<Kind, "unread">;
 const FILTERS: { key: KindFilter; label: string }[] = [
   { key: "all", label: "Everyone" },
   { key: "insider", label: "Insiders" },
-  { key: "congress", label: "House" },
+  { key: "congress", label: "Congress" },
   { key: "fund", label: "Funds" },
 ];
 const WINDOWS = [7, 30, 90, 365];
@@ -267,7 +267,8 @@ function EmptyLake() {
       <p>This app only reads. Pull the data in, then reload:</p>
       <pre>
         quantlab data ingest -f sec_insider.insider_transactions -f sec_13f.institutional_holdings \{"\n"}
-        {"  "}-f sec_ftd.fails_to_deliver -f house_clerk.congress_filings -f house_clerk.congress_trades
+        {"  "}-f sec_ftd.fails_to_deliver -f house_clerk.congress_filings -f house_clerk.congress_trades \{"\n"}
+        {"  "}-f senate_efd.congress_filings -f senate_efd.congress_trades
       </pre>
     </div>
   );

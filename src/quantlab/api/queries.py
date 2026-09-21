@@ -412,7 +412,7 @@ def _brief(
     if members:
         bought = sum(1 for e in members if e.direction == "buy")
         people = len({e.actor_id for e in members})
-        who = "One House member" if people == 1 else f"{people} House members"
+        who = "One member of Congress" if people == 1 else f"{people} members of Congress"
         sentences.append(
             f"{who} disclosed trades in the last 90 days: {bought} bought, {len(members) - bought} sold."
         )

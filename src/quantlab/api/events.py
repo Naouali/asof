@@ -152,21 +152,29 @@ _HONORIFICS = frozenset({"hon", "mr", "mrs", "ms", "miss", "dr", "rep"})
 
 
 def member_name(raw: str) -> str:
-    """A House member's name, without the Clerk's clutter.
+    """A member's name, without the clutter of the record it came from.
 
     The Clerk's own records carry honorifics in the middle of names and the odd
     doubled word -- ``Hon. John J Mr McGuire III``, ``Hon. Scott Scott Franklin``
     -- in the index and in the reports alike. Those are dropped for display. The
-    words that identify the person are left alone.
+    words that identify the person are left alone. The Senate indexes its paper
+    filers in capitals, which are lowered: a name is not a shout.
     """
     kept: list[str] = []
-    for word in raw.split():
+    for word in (raw.title() if raw.isupper() else raw).split():
         if word.strip(".,").lower() in _HONORIFICS:
             continue
         if kept and kept[-1].lower() == word.lower():
             continue
         kept.append(word)
     return " ".join(kept)
+
+
+def _seat(chamber: str | None, district: str | None) -> tuple[str, str | None]:
+    """How a member is addressed, and the seat shown beside the name."""
+    if chamber == "senate":
+        return "Sen.", "Senate"  # the Senate's index does not say which state
+    return "Rep.", district
 
 
 def member_id(name: str, district: str | None) -> str:
@@ -333,6 +341,7 @@ def congress_events(frame: pl.DataFrame) -> list[Event]:
         disclosed = eastern_date(disclosed_at)
         lag = (disclosed - traded).days
         member = member_name(str(row["member"]))
+        title, seat = _seat(row["chamber"], row["state_district"])
         ticker = None if row["symbol"] == "NO_TICKER" else row["symbol"]
 
         notes = [note for note in (_OWNER_NOTES.get(row["owner"] or ""),) if note]
@@ -347,9 +356,9 @@ def congress_events(frame: pl.DataFrame) -> list[Event]:
                 kind="congress",
                 ticker=ticker,
                 asset=row["asset"],
-                actor=f"Rep. {member}",
+                actor=f"{title} {member}",
                 actor_id=member_id(member, row["state_district"]),
-                role=row["state_district"],
+                role=seat,
                 direction="buy" if kind == "purchase" else "none" if kind == "exchange" else "sell",
                 verb={"purchase": "Bought", "exchange": "Exchanged"}.get(kind, "Sold"),
                 size=str(row["amount_text"]).replace(" - ", " to "),
@@ -388,6 +397,7 @@ def unread_report_events(filings: pl.DataFrame, trades: pl.DataFrame) -> list[Ev
         member = member_name(
             " ".join(part for part in (row["first_name"], row["last_name"], row["suffix"]) if part)
         )
+        title, seat = _seat(row["chamber"], row["symbol"])
         filed = eastern_date(row["known_at"])
         events.append(
             Event(
@@ -395,9 +405,9 @@ def unread_report_events(filings: pl.DataFrame, trades: pl.DataFrame) -> list[Ev
                 kind="unread",
                 ticker=None,
                 asset=None,
-                actor=f"Rep. {member}",
+                actor=f"{title} {member}",
                 actor_id=member_id(member, row["symbol"]),
-                role=row["symbol"],
+                role=seat,
                 direction="none",
                 verb="Filed",
                 size="a transaction report on paper",

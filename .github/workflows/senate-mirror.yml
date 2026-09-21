@@ -1,0 +1,68 @@
+name: Senate mirror
+
+# The Senate's disclosure site answers only connections from inside the United
+# States. GitHub's hosted runners are there, so this job reads the site once a day
+# and commits what it saw to the `senate-mirror` branch, where an ingest running
+# anywhere can read it. The branch holds data only and shares no history with main.
+
+on:
+  schedule:
+    # 05:00 UTC, ahead of the 06:15 disclosure ingest in configs/schedule.yaml.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      start:
+        description: Earliest filing date to mirror (YYYY-MM-DD)
+        default: "2025-01-01"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: senate-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # Names the project and where to complain. No personal address.
+      QUANTLAB_HTTP_USER_AGENT: asof senate mirror (+https://github.com/${{ github.repository }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install
+        run: uv sync --frozen --no-dev --python 3.12
+
+      - name: Check out the mirror branch
+        run: |
+          if git ls-remote --exit-code --heads origin senate-mirror >/dev/null; then
+            git fetch --depth 1 origin senate-mirror
+            git worktree add mirror origin/senate-mirror
+            git -C mirror switch -c senate-mirror
+          else
+            git worktree add --detach mirror
+            git -C mirror switch --orphan senate-mirror
+          fi
+
+      - name: Read the Senate
+        run: >-
+          uv run --no-sync python scripts/update_senate_mirror.py mirror/senate
+          --start "${{ inputs.start || '2025-01-01' }}"
+
+      - name: Commit what is new
+        working-directory: mirror
+        run: |
+          git add senate
+          if git diff --cached --quiet; then
+            echo "Nothing new today."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Senate reports seen $(date -u +%F)"
+          git push origin senate-mirror

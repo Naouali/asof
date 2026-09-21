@@ -461,9 +461,10 @@ DATASETS: dict[str, DatasetSchema] = {
         description=(
             "Securities transactions disclosed by members of Congress under the "
             "STOCK Act, one row per transaction line of a periodic transaction "
-            "report. `as_of` is the TRANSACTION date and `known_at` the end of the "
-            "day the report was filed -- the law allows 45 days between them and "
-            "late filings run to months. `symbol` is the ticker the member wrote, "
+            "report. `as_of` is the TRANSACTION date and `known_at` when the report "
+            "was filed -- the end of that day for the House, which gives no time, "
+            "and the minute for the Senate, which does. The law allows 45 days "
+            "between them and late filings run to months. `chamber` says which. `symbol` is the ticker the member wrote, "
             "or NO_TICKER for a bond, fund or private holding. The size is a RANGE, "
             "never a figure: `amount_min` and `amount_max` are the bounds of the "
             "bracket, and `amount_max` is null for an open-ended one."

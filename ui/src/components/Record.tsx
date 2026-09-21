@@ -7,9 +7,9 @@ import { actorHref, tickerHref } from "../lib/links";
 
 const KIND_LABEL: Record<DisclosureEvent["kind"], string> = {
   insider: "Company insider",
-  congress: "House member",
+  congress: "Member of Congress",
   fund: "Fund manager",
-  unread: "House member",
+  unread: "Member of Congress",
 };
 
 /** "OH02" as a reader writes it: "Ohio's 2nd" is more than the data knows, "OH-02" is not. */
@@ -21,7 +21,10 @@ function district(code: string): string {
 /** Who this is, in a sentence, before what they did. */
 function standing(event: DisclosureEvent): string | null {
   if (!event.role) return null;
-  if (event.kind === "congress" || event.kind === "unread") return `Represents ${district(event.role)} in the House`;
+  if (event.kind === "congress" || event.kind === "unread") {
+    // The Senate's records do not say which state a senator sits for.
+    return event.role === "Senate" ? "Sits in the Senate" : `Represents ${district(event.role)} in the House`;
+  }
   if (event.kind === "insider") return event.asset ? `${event.role} of ${event.asset}` : event.role;
   return event.role;
 }
@@ -58,11 +61,17 @@ function chain(event: DisclosureEvent): Step[] {
       tone: "limit",
     });
   }
-  const filedWith = event.kind === "congress" ? "The report was filed with the House Clerk" : "The SEC accepted the filing";
+  const filedWith =
+    event.kind !== "congress"
+      ? "The SEC accepted the filing"
+      : event.role === "Senate"
+        ? "The report was filed with the Secretary of the Senate"
+        : "The report was filed with the House Clerk";
   steps.push({
     day: event.disclosed_on,
-    // The Clerk publishes a filing date and no time; the SEC stamps the second.
-    when: event.kind === "congress" ? longDay(event.disclosed_on, true) : `${longDay(event.disclosed_on, true)}, ${washingtonTime(event.disclosed_at)} in Washington`,
+    // The House Clerk publishes a filing date and no time; the Senate prints the
+    // minute and the SEC stamps the second.
+    when: event.kind === "congress" && event.role !== "Senate" ? longDay(event.disclosed_on, true) : `${longDay(event.disclosed_on, true)}, ${washingtonTime(event.disclosed_at)} in Washington`,
     title: `${filedWith}. This is when it became public`,
     note: event.late_days > 0 ? `${plural(event.lag_days, "day")} after the trade, ${plural(event.late_days, "day")} past the deadline.` : `${plural(event.lag_days, "day")} after ${event.kind === "fund" ? "the quarter closed" : "the trade"}.`,
     tone: "public",

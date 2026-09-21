@@ -1,0 +1,29 @@
+{
+ "draw": 1,
+ "recordsTotal": 3,
+ "recordsFiltered": 3,
+ "data": [
+  [
+   "Alan",
+   "Armstrong",
+   "Armstrong, Alan (Senator)",
+   "<a href=\"/search/view/ptr/b999bc0e-3eb0-4ca9-ab07-8e8f2e04b41f/\" target=\"_blank\">Periodic Transaction Report for 09/17/2026</a>",
+   "09/17/2026"
+  ],
+  [
+   "RICHARD",
+   "BLUMENTHAL",
+   "Senator",
+   "<a href=\"/search/view/paper/929216d5-5dbd-429c-858c-1e9332924627/\" target=\"_blank\">Periodic Transaction Report for 08/31/2026</a>",
+   "08/31/2026"
+  ],
+  [
+   "John",
+   "Boozman",
+   "Boozman, John (Senator)",
+   "<a href=\"/search/view/ptr/51455bcd-4966-4e77-b481-09897ada81ae/\" target=\"_blank\">Periodic Transaction Report for 12/08/2025 (Amendment 1)</a>",
+   "08/24/2026"
+  ]
+ ],
+ "result": "ok"
+}

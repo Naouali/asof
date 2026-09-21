@@ -73,7 +73,7 @@ export function ContextPane({ event, today }: { event: DisclosureEvent; today: s
 
       <section>
         <h3>What you can't see here</h3>
-        <p className="context__brief">Senate trades, House reports filed on paper, and anything a fund has done since its last quarter end. Short positions are never disclosed at all.</p>
+        <p className="context__brief">Congressional reports filed on paper, and anything a fund has done since its last quarter end. Short positions are never disclosed at all.</p>
       </section>
     </div>
   );

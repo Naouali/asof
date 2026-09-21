@@ -910,9 +910,8 @@ _DISCLOSURES: tuple[SourceSpec, ...] = (
             "scan with no text layer, and some of the most active traders in the House "
             "file that way. Their trades are ABSENT from `congress_trades`, not zero. "
             "`congress_filings` lists every report, so the gap can be measured.",
-            "THE HOUSE ONLY. The Senate's disclosure site refuses automated clients and "
-            "sits behind a click-through agreement; it is catalogued as `senate_efd` "
-            "and deliberately not fetched. Half of Congress is therefore missing.",
+            "THE HOUSE ONLY. The Senate is a separate source, `senate_efd`, filing "
+            "into the same two datasets; tell them apart by `chamber`.",
             "Sizes are brackets, not amounts: $1,001-$15,000 up to over $50,000,000. "
             "The top of a bracket can be fifteen times the bottom, so any aggregate "
             "dollar figure built from this is an order-of-magnitude estimate.",
@@ -930,24 +929,49 @@ _DISCLOSURES: tuple[SourceSpec, ...] = (
         name="US Senate electronic financial disclosures (eFD)",
         url="https://efdsearch.senate.gov/search/",
         asset_classes=(AssetClass.EQUITY, AssetClass.REFERENCE),
-        datasets=("congress_trades",),
+        datasets=("congress_trades", "congress_filings"),
         pit_quality=PitQuality.VINTAGE,
         update_frequency="continuous",
-        licence="Public record, behind a click-through agreement restricting use",
+        licence=(
+            "Public record. 5 U.S.C. 13107 prohibits use for commercial purposes "
+            "other than news dissemination; the site makes every visitor accept that"
+        ),
         reliability="scraped",
         key_setting=None,
-        rate_limit="automated clients are refused (HTTP 403 as of 2026-09-20)",
-        max_requests_per_second=0.2,
+        rate_limit="none published; reachable only from inside the United States",
+        max_requests_per_second=0.5,
         caveats=(
-            "NOT FETCHED, by decision. The site answers automated clients with 403 and "
-            "requires accepting a use agreement before any search. Getting past either "
-            "is a choice for a person to make about terms they have read, not a "
-            "default for a scheduler to make on their behalf.",
-            "The community mirrors that once republished this data are gone or frozen: "
-            "the Senate and House Stock Watcher buckets return 403, and the public "
-            "GitHub copy of the Senate data ends in December 2020.",
+            "The site answers ONLY connections from inside the United States; every "
+            "other connection gets HTTP 403, whatever the client. By default this is "
+            "therefore read through a mirror: a daily job on a US-hosted runner reads "
+            "the Senate and commits what it saw to the `senate-mirror` branch of this "
+            "project's repository. If that job stops, the Senate data stops with it, "
+            "silently from the lake's point of view -- watch the data page's freshness.",
+            "Reading the site means accepting its agreement, which restates "
+            "5 U.S.C. 13107(c): no unlawful use, no commercial use other than news "
+            "dissemination, no credit rating, no solicitation. The reader accepts it "
+            "because a person decided it should. The same statute covers the House "
+            "reports, which have no checkbox in front of them.",
+            "`known_at` is the filing MINUTE printed on the report, read as Washington "
+            "time, on the assumption that an electronic report is published as it is "
+            "filed. The mirror also records when it first saw each report, which is "
+            "the only hard bound on publication this project has.",
+            "Reports filed on paper are scanned images and are not read: about one in "
+            "seven since 2021. They are listed in `congress_filings` and yield nothing "
+            "in `congress_trades`. Only periodic transaction reports are indexed.",
+            "The index does not say which state a senator sits for, so "
+            "`state_district` is the constant SENATE.",
+            "An amendment re-lists the transactions of the report it corrects under a "
+            "new document id. Both stay in the lake; the amended rows are marked, and "
+            "counting trades across both double-counts.",
+            "Sizes are brackets, as in the House, and the ticker is whatever the "
+            "senator typed. A blank ticker is read from the asset's name when it ends "
+            "in one, except on an exchange, which names two securities.",
         ),
-        notes=("Catalogued so the gap in congressional coverage is explicit.",),
+        notes=(
+            "Asset types are the Senate's words (Stock, Stock Option, Municipal "
+            "Security), not the House's two-letter codes.",
+        ),
     ),
 )
 

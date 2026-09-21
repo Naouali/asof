@@ -309,12 +309,25 @@ few tickers to more than one CUSIP, so the join needs a rule -- the most frequen
 pairing is a reasonable one -- and an unmatched holding is not a holding that does
 not exist.
 
-**Half of Congress is missing, and part of the other half.** Only the House is
-fetched; the Senate's site refuses automated clients. Within the House, roughly
-one report in eight is a scan that cannot be read, and the members who file on
-paper include some of the most active traders. `congress_filings` lists every
-report, so the unread ones can be counted -- count them before concluding anything
-about who trades.
+**Part of Congress is missing in both chambers.** Roughly one House report in
+eight, and one Senate report in seven, is filed on paper: a scan that cannot be
+read, and the members who file that way include some of the most active traders.
+`congress_filings` lists every report, so the unread ones can be counted -- count
+them before concluding anything about who trades.
+
+**The Senate arrives second-hand.** Its site answers only connections from inside
+the United States, so it is read by a daily job on a US-hosted runner, which
+commits what it saw to the `senate-mirror` branch of this repository; the ingest
+reads that. If the job stops, Senate data stops, and nothing in the lake says so
+except its age -- check the data page. The Senate's index also does not say which
+state a senator sits for, and an amended report re-lists the trades of the one it
+corrects, so counting across both double-counts.
+
+**Congressional reports carry a statutory restriction on use.** 5 U.S.C. 13107(c)
+forbids using them for a commercial purpose other than news dissemination, among
+other things. The Senate's site makes each visitor accept that; the House's does
+not ask, and is covered by the same law. What that means for a product built on
+this data is a question for a lawyer, not for this document.
 
 **Congressional trade sizes are brackets.** "$1,001 - $15,000" is the entire
 disclosure, and the brackets widen to "$5,000,001 - $25,000,000". Any dollar

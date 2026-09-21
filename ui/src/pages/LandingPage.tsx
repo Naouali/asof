@@ -305,8 +305,8 @@ export function LandingPage() {
 
         <p className="lp-statement__foot">
           {lake.data && rows("congress_trades") > 0
-            ? `Reading ${rows("insider_transactions").toLocaleString("en-US")} insider transactions, ${rows("congress_trades").toLocaleString("en-US")} House trades and ${rows("institutional_holdings").toLocaleString("en-US")} fund positions. Not the Senate, yet.`
-            : "Reads insider filings, fund holdings and House trades. Not the Senate, yet."}
+            ? `Reading ${rows("insider_transactions").toLocaleString("en-US")} insider transactions, ${rows("congress_trades").toLocaleString("en-US")} congressional trades and ${rows("institutional_holdings").toLocaleString("en-US")} fund positions.`
+            : "Reads insider filings, fund holdings and the trades of both chambers of Congress."}
         </p>
       </aside>
 

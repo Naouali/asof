@@ -141,8 +141,14 @@ class HttpClient:
         *,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        data: dict[str, Any] | None = None,
     ) -> httpx.Response:
-        """GET with rate limiting, retries and loud failure."""
+        """One request with rate limiting, retries and loud failure.
+
+        A GET, unless ``data`` is given: that is sent as a form POST, which is how
+        a site with a search form wants to be asked. Cookies persist for the life
+        of the client, so a session opened by one request serves the next.
+        """
         if self.settings.offline:
             raise OfflineError(
                 self.spec.key,
@@ -160,7 +166,10 @@ class HttpClient:
             if waited:
                 log.debug("http.throttled", source=self.spec.key, waited_seconds=round(waited, 3))
             try:
-                response = self._client.get(url, params=params, headers=headers)
+                if data is None:
+                    response = self._client.get(url, params=params, headers=headers)
+                else:
+                    response = self._client.post(url, params=params, headers=headers, data=data)
             except httpx.TransportError as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
                 log.warning(

@@ -178,11 +178,7 @@ export function TickerPage() {
           <h2>What this page can't see</h2>
           <dl className="blind">
             <div>
-              <dt>Senate trades.</dt>
-              <dd>Only the House is covered.</dd>
-            </div>
-            <div>
-              <dt>House reports filed on paper.</dt>
+              <dt>Reports filed on paper, in either chamber.</dt>
               <dd>Any of them may name {data.ticker}.</dd>
             </div>
             <div>

@@ -25,6 +25,7 @@ SOURCE_MODULES: tuple[str, ...] = (
     "quantlab.data.sources.cftc",
     "quantlab.data.sources.fred",
     "quantlab.data.sources.house_clerk",
+    "quantlab.data.sources.senate_efd",
     "quantlab.data.sources.ken_french",
     "quantlab.data.sources.sec_13f",
     "quantlab.data.sources.sec_ftd",

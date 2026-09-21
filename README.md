@@ -2,7 +2,7 @@
 
 Who traded, and when the world could first have known.
 
-Company insiders, large funds and members of the US House all have to disclose
+Company insiders, large funds and members of Congress all have to disclose
 their trades — days, weeks or months after making them. **asof** collects those
 disclosures from their official sources, keeps both dates for every one of them,
 and shows the result as a feed, a timeline and a price chart that can be wound
@@ -12,7 +12,7 @@ It is two things in one repository:
 
 - **The app** — a read-only web interface over the disclosure data. See
   [The app](#the-app).
-- **The ETL underneath it** — twenty fetchers over sixteen free sources
+- **The ETL underneath it** — twenty-two fetchers over seventeen free sources
   (disclosures, prices, fundamentals, macro, crypto, options), landing in a local
   parquet lake that DuckDB queries in-process. Everything the app needs is
   fetched without an API key.
@@ -52,6 +52,8 @@ source, skips a failed job silently, or returns an empty frame to mean "error".
 | `sec_ftd.fails_to_deliver` | fails-to-deliver balances; the CUSIP→ticker bridge | equity | as published | none (needs a real `User-Agent`) |
 | `house_clerk.congress_trades` | trades disclosed by members of the US House | equity | vintage | none |
 | `house_clerk.congress_filings` | index of every House disclosure document | reference | vintage | none |
+| `senate_efd.congress_trades` | trades disclosed by US senators, read through this repository's mirror | equity | vintage | none |
+| `senate_efd.congress_filings` | index of Senate transaction reports, paper ones included | reference | vintage | none |
 | `ken_french.series_observations` | factor returns | factors | restated | none |
 | `open_asset_pricing.anomaly_catalogue` | published anomaly catalogue | reference | restated | none |
 
@@ -146,9 +148,9 @@ source / dataset / asset class / year, so anything that reads parquet can read i
 
 ## Disclosed trades: insiders, whales and politicians
 
-Four sources cover who is buying and selling: company insiders (SEC Forms 4 and
+Five sources cover who is buying and selling: company insiders (SEC Forms 4 and
 5), large managers such as Berkshire or Bridgewater (SEC Form 13F), members of the
-US House (STOCK Act reports), and fails-to-deliver balances. None of them observes
+US House and the US Senate (STOCK Act reports), and fails-to-deliver balances. None of them observes
 a trade. Each is a disclosure filed days to months later, so `as_of` is when the
 trade happened and `known_at` is when anyone outside could first have known —
 always query these with `--as-of`.
@@ -156,7 +158,8 @@ always query these with `--as-of`.
 ```bash
 quantlab data ingest -f sec_insider.insider_transactions -f sec_13f.institutional_holdings \
                      -f sec_ftd.fails_to_deliver \
-                     -f house_clerk.congress_filings -f house_clerk.congress_trades
+                     -f house_clerk.congress_filings -f house_clerk.congress_trades \
+                     -f senate_efd.congress_filings -f senate_efd.congress_trades
 ```
 
 ```bash
@@ -178,9 +181,9 @@ quantlab data query --as-of 2026-09-20 -d institutional_holdings -d fails_to_del
      and h.as_of = (select max(as_of) from institutional_holdings where symbol = '1067983')
    order by h.value_usd desc"
 
-# What the House disclosed, and how late.
+# What Congress disclosed, and how late. `chamber` is 'house' or 'senate'.
 quantlab data query --as-of 2026-09-20 -d congress_trades \
-  "select member, symbol, transaction_type, amount_text, as_of::date traded,
+  "select chamber, member, symbol, transaction_type, amount_text, as_of::date traded,
           known_at::date disclosed, date_diff('day', as_of, known_at) days_late
    from congress_trades where symbol <> 'NO_TICKER' order by known_at desc"
 
@@ -197,8 +200,17 @@ quantlab data query --as-of 2026-09-20 -d congress_filings -d congress_trades \
 ```
 
 Managers are chosen in [configs/ingest.yaml](configs/ingest.yaml) by SEC CIK,
-written without leading zeros (Berkshire Hathaway is `1067983`). The Senate is not
-covered: its disclosure site refuses automated clients. Read the "Disclosed
+written without leading zeros (Berkshire Hathaway is `1067983`).
+
+**The Senate comes through a mirror.** Its disclosure site answers only connections
+from inside the United States. A daily GitHub Actions job
+([senate-mirror.yml](.github/workflows/senate-mirror.yml)) reads it from a US-hosted
+runner and commits what it saw to the `senate-mirror` branch of this repository,
+and the Senate fetchers read that branch by default. On a US machine, set
+`options: {direct: true}` on the two Senate jobs to read the Senate itself. A fork
+must point `mirror_url` at its own branch and run the workflow once by hand.
+
+Read the "Disclosed
 trades" section of [docs/LIMITATIONS.md](docs/LIMITATIONS.md) before drawing
 conclusions from any of this.
 
@@ -264,8 +276,6 @@ does not pretend otherwise.
   value ranges, not amounts, and never a starting position.
 - **Login and teams.** Accounts, shared notes, alerts and saved views.
 - **Pages for a person and for a fund.** Today only a ticker has its own page.
-- **The Senate.** Its disclosure site refuses automated clients, so it is
-  catalogued and not fetched.
 
 ## Running with no API keys
 

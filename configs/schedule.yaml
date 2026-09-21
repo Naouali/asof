@@ -34,13 +34,15 @@ jobs:
       Insider, institutional and congressional disclosures. Runs after the US
       filing day is over everywhere it matters: EDGAR accepts until 22:00 Eastern
       and a House report is only knowable once its filing day has ended, which is
-      04:00-05:00 UTC. Tuesday to Saturday, so Friday evening's filings are caught.
+      04:00-05:00 UTC. The Senate is read from a mirror refreshed at 05:00 UTC.
+      Tuesday to Saturday, so Friday evening's filings are caught.
     cron: "15 6 * * 2-6"
     command:
       ["data", "ingest", "--incremental",
        "-f", "sec_insider.insider_transactions", "-f", "sec_13f.institutional_holdings",
        "-f", "sec_ftd.fails_to_deliver",
-       "-f", "house_clerk.congress_filings", "-f", "house_clerk.congress_trades"]
+       "-f", "house_clerk.congress_filings", "-f", "house_clerk.congress_trades",
+       "-f", "senate_efd.congress_filings", "-f", "senate_efd.congress_trades"]
     timeout_seconds: 5400
     enabled: true
 

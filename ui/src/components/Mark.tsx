@@ -3,7 +3,7 @@ import type { Direction, Kind } from "../lib/api";
 /**
  * Who, by shape. Which way, by fill.
  *
- * A circle is an insider, a square a House member, a diamond a fund. Bought is
+ * A circle is an insider, a square a member of Congress, a diamond a fund. Bought is
  * solid and sold is hollow, so the direction survives being printed in grey or
  * read by someone who cannot tell the blue from the orange.
  */
@@ -27,7 +27,7 @@ export function Legend({ chart = false }: { chart?: boolean }) {
       </span>
       <span className="legend__item">
         <Mark kind="congress" direction="buy" muted />
-        House member
+        Member of Congress
       </span>
       <span className="legend__item">
         <Mark kind="fund" direction="buy" muted />

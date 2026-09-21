@@ -278,6 +278,41 @@ def test_an_unread_report_is_bounded_to_the_period_the_trades_cover() -> None:
     assert events[0].actor == "Rep. Rohit Khanna"
 
 
+def test_a_senator_is_addressed_as_one_and_has_no_district() -> None:
+    line = congress_line(
+        chamber="senate",
+        doc_id="b999bc0e-3eb0-4ca9-ab07-8e8f2e04b41f",
+        member="Alan Armstrong",
+        state_district="SENATE",
+        known_at=at(2026, 9, 17, 12, 55),
+    )
+    (event,) = congress_events(frame("congress_trades", "senate_efd", [line]))
+
+    assert event.actor == "Sen. Alan Armstrong"
+    assert event.role == "Senate"  # the Senate's index does not say which state
+    assert event.disclosed_at == at(2026, 9, 17, 12, 55)
+
+
+def test_a_paper_filer_indexed_in_capitals_is_not_shouted() -> None:
+    trades = frame("congress_trades", "senate_efd", [congress_line(chamber="senate")])
+    paper = {
+        "symbol": "SENATE",
+        "as_of": at(2026, 9, 18),
+        "known_at": at(2026, 9, 19, 3, 59),
+        "chamber": "senate",
+        "doc_id": "929216d5",
+        "filing_type": "P",
+        "first_name": "RICHARD",
+        "last_name": "BLUMENTHAL",
+        "year": 2026,
+        "url": "https://example.test/paper/929216d5/",
+    }
+    (event,) = unread_report_events(frame("congress_filings", "senate_efd", [paper]), trades)
+
+    assert event.actor == "Sen. Richard Blumenthal"
+    assert event.role == "Senate"
+
+
 # ------------------------------------------------------------------------- funds --
 def test_a_fund_event_is_the_change_from_the_quarter_before() -> None:
     q1, q2 = at(2026, 3, 31), at(2026, 6, 30)

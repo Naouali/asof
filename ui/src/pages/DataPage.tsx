@@ -74,7 +74,7 @@ export function DataPage({ today }: { today: string }) {
 
         <section aria-labelledby="unread-title">
           <div className="sectionhead">
-            <h2 id="unread-title">House reports that could not be read</h2>
+            <h2 id="unread-title">Congressional reports that could not be read</h2>
           </div>
           <p className="note">
             {data.unread_reports.length === 0

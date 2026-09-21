@@ -171,9 +171,31 @@ jobs:
       Trades parsed out of House periodic transaction reports. One PDF per report
       at one request a second, and the House files roughly five hundred a year,
       so each year of history is about ten minutes. Scanned paper reports cannot
-      be read and yield nothing. The Senate is not covered; see `senate_efd` in
-      the catalogue for why.
+      be read and yield nothing.
     start: "2025-01-01"
+    symbols: []
+
+  # The Senate's site answers only from inside the United States, so by default
+  # these two read a mirror that a daily job on a US-hosted runner keeps on the
+  # `senate-mirror` branch of this repository (.github/workflows/senate-mirror.yml).
+  # On a US machine, `options: {direct: true}` reads the Senate itself instead.
+  # The mirror starts in 2025; an earlier start here is an error, not an empty year.
+  # The overlap is wide because the mirror can run a day or two behind the Senate.
+  - fetcher: senate_efd.congress_filings
+    description: >-
+      The index of Senate periodic transaction reports, paper ones included, so
+      that a report nobody could read shows up as a gap rather than as a senator
+      who did not trade.
+    start: "2025-01-01"
+    overlap_days: 14
+    symbols: []
+
+  - fetcher: senate_efd.congress_trades
+    description: >-
+      Trades from Senate periodic transaction reports, known from the minute each
+      report was filed. Paper reports are scans and yield nothing.
+    start: "2025-01-01"
+    overlap_days: 14
     symbols: []
 
   # ------------------------------------------------------------ positioning ----
