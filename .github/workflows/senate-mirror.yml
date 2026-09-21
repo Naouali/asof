@@ -9,6 +9,14 @@ on:
   schedule:
     # 05:00 UTC, ahead of the 06:15 disclosure ingest in configs/schedule.yaml.
     - cron: "0 5 * * *"
+  # A change to the reader is worth a run of its own: it is the only place the
+  # reader meets the real site.
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/senate-mirror.yml
+      - scripts/update_senate_mirror.py
+      - src/quantlab/data/sources/senate_efd.py
   workflow_dispatch:
     inputs:
       start:
