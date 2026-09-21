@@ -86,7 +86,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      # No setup-buildx here. It makes a container-based builder the default, and
+      # an image built there never reaches the Docker daemon: `make base` would
+      # "succeed" and every service image would then fail on FROM quantlab-base.
+      # The daemon's own BuildKit is what a developer's machine uses too.
 
       - name: Validate the compose file
         run: docker compose config --quiet

@@ -360,8 +360,9 @@ def serve(
 
     from quantlab.api import create_app
 
+    # No `layout.ensure()`: the app only reads, and in the compose stack its lake
+    # is mounted read-only. A lake that is not there yet reads as an empty one.
     settings = get_settings()
-    settings.layout.ensure()
     if host not in _LOOPBACK:
         err_console.print(
             f"[yellow]Listening on {host}, not on loopback.[/yellow] This app has no login: "

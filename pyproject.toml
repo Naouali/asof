@@ -127,6 +127,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
+# Test modules import shared helpers as `tests.conftest`, so the repository root
+# has to be importable however pytest is started (`uv run pytest` does not add it).
+pythonpath = ["."]
 # Slow tests (the Docker stack integration tests) are excluded by default.
 addopts = "-ra --strict-markers --strict-config -m 'not slow'"
 timeout = 300
