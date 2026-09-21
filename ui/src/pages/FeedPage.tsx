@@ -17,6 +17,7 @@ const FILTERS: { key: KindFilter; label: string }[] = [
   { key: "insider", label: "Insiders" },
   { key: "congress", label: "Congress" },
   { key: "fund", label: "Funds" },
+  { key: "contract", label: "Contracts" },
 ];
 const WINDOWS = [7, 30, 90, 365];
 /** A run by one filer longer than this is folded, so one report cannot bury a day. */
@@ -41,7 +42,9 @@ export function FeedPage() {
   const view = params.get("view") === "timeline" ? "timeline" : "desk";
   const days = Number(params.get("days")) || (actor ? 365 : 7);
 
-  const [kind, setKind] = useState<KindFilter>("all");
+  // In the URL, like the as-of date: a filtered view is something to send someone.
+  const asked = params.get("kind");
+  const kind: KindFilter = FILTERS.some((filter) => filter.key === asked) ? (asked as KindFilter) : "all";
   const [noise, setNoise] = useState(false);
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
@@ -59,7 +62,10 @@ export function FeedPage() {
 
   const keep = (event: DisclosureEvent) => {
     if (event.noise && !noise) return false;
-    if (kind === "all") return true;
+    // "Everyone" is everyone who traded. Contracts are a different kind of fact and
+    // there are thirty large ones a week, so they are asked for, not mixed in.
+    // Unless the page IS an agency's, where its awards are the whole point.
+    if (kind === "all") return event.kind !== "contract" || Boolean(actor);
     return event.kind === kind || (event.kind === "unread" && kind === "congress");
   };
 
@@ -92,11 +98,12 @@ export function FeedPage() {
   const today = data.today;
   const disclosures = shown.filter((event) => event.kind !== "unread").length;
   const hiddenNoise = data.groups.flatMap((group) => group.events).filter((event) => event.noise).length;
+  const noun = kind === "contract" ? "contract action" : "disclosure";
   const heading = data.actor
     ? data.actor.name
     : data.is_live
-      ? `${plural(disclosures, "disclosure")} became public ${days === 7 ? "this week" : `in the last ${days} days`}`
-      : `${plural(disclosures, "disclosure")} had become public by ${shortDay(today)}`;
+      ? `${plural(disclosures, noun)} became public ${days === 7 ? "this week" : `in the last ${days} days`}`
+      : `${plural(disclosures, noun)} had become public by ${shortDay(today)}`;
 
   const step = (delta: number) => {
     const index = picked ? visible.findIndex((event) => event.id === picked.id) : -1;
@@ -125,7 +132,7 @@ export function FeedPage() {
         <div className="deskbar__controls">
           <div className="pills" role="group" aria-label="Filter by who disclosed">
             {FILTERS.map((filter) => (
-              <button key={filter.key} type="button" aria-pressed={kind === filter.key} onClick={() => setKind(filter.key)}>
+              <button key={filter.key} type="button" aria-pressed={kind === filter.key} onClick={() => setParam("kind", filter.key === "all" ? null : filter.key)}>
                 {filter.label}
               </button>
             ))}
@@ -155,17 +162,23 @@ export function FeedPage() {
         <EmptyLake />
       ) : view === "timeline" ? (
         <div className="feed__timeline">
-          <RoutineToggle noise={noise} setNoise={setNoise} hidden={hiddenNoise} />
-          <Timeline events={shown} beyond={data.beyond.filter(keep)} beyondTotal={data.beyond_total} today={today} isLive={data.is_live} />
-          <Legend chart />
+          {kind !== "contract" && <RoutineToggle noise={noise} setNoise={setNoise} hidden={hiddenNoise} />}
+          <Timeline events={shown} beyond={data.beyond.filter(keep)} beyondTotal={kind === "contract" ? data.beyond_contracts_total : kind === "all" ? data.beyond_total : data.beyond.filter(keep).length} today={today} isLive={data.is_live} noun={kind === "contract" ? "contract action" : "trade"} />
+          <Legend chart contracts={kind === "contract" || Boolean(actor?.startsWith("agency:"))} />
         </div>
       ) : (
         <div className="desk">
           <section className="desk__list" aria-label="Disclosures">
-            <RoutineToggle noise={noise} setNoise={setNoise} hidden={hiddenNoise} />
+            {kind !== "contract" && <RoutineToggle noise={noise} setNoise={setNoise} hidden={hiddenNoise} />}
+            {kind === "contract" && (
+              <p className="note desk__note">
+                Federal contract actions of $25 million and over, for about forty listed contractors. Pentagon actions appear 90 days after they happen. Each company's page lists its smaller ones.
+              </p>
+            )}
             {data.is_live &&
               kind !== "congress" &&
               kind !== "fund" &&
+              kind !== "contract" &&
               data.insights.map((insight) => (
                 <Link className="insight" key={insight.ticker} to={`/t/${encodeURIComponent(insight.ticker)}${search}`}>
                   {insight.text}

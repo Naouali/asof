@@ -24,6 +24,7 @@ from quantlab.api.events import (
     add_business_days,
     business_days_between,
     congress_events,
+    contract_events,
     display_name,
     fund_events,
     insider_events,
@@ -405,6 +406,79 @@ def test_small_rebalancing_is_not_an_event() -> None:
     assert fund_events(frame("institutional_holdings", "sec_13f", rows), {}) == []
 
 
+# --------------------------------------------------------------------- contracts --
+def contract_line(**overrides: Any) -> dict[str, Any]:
+    return {
+        "symbol": "OSPR",
+        "as_of": at(2026, 6, 11),
+        "known_at": at(2026, 9, 11),
+        "transaction_key": "9700_-NONE-_FA880718C0009_P00200_-NONE-_0",
+        "award_id": "FA880718C0009",
+        "modification_number": "P00200",
+        "recipient_name": "OSPREY FEDERAL SYSTEMS LLC",
+        "recipient_uei": "AAAAAAAAAAA1",
+        "parent_name": "OSPREY THERAPEUTICS INC",
+        "parent_uei": "BBBBBBBBBBB2",
+        "awarding_agency": "Department of Defense",
+        "awarding_sub_agency": "DEPT OF THE AIR FORCE",
+        "defense": True,
+        "action_type": "EXERCISE AN OPTION",
+        "obligation_usd": 514_412_527.67,
+        "potential_value_usd": 7_200_000_000.0,
+        "description": "FIELD HOSPITAL ANTIVIRAL STOCKPILE LOT 23 AND 24 PURCHASE",
+        "reported_at": at(2026, 6, 9, 11, 56),
+        "url": "https://www.usaspending.gov/award/CONT_AWD_FA880718C0009_9700_-NONE-_-NONE-/",
+        **overrides,
+    }
+
+
+def test_a_contract_is_dated_by_the_action_and_known_by_its_publication() -> None:
+    (event,) = contract_events(frame("government_contracts", "usaspending", [contract_line()]))
+
+    assert event.kind == "contract" and event.ticker == "OSPR"
+    assert event.actor == "Dept of the Air Force"
+    assert event.role == "Department of Defense"
+    assert event.verb == "Exercised an option for" and event.size == "$514.41M"
+    assert event.traded_on == dt.date(2026, 6, 11)
+    assert event.disclosed_on == dt.date(2026, 9, 10)  # 00:00 UTC is the evening before
+    assert event.lag_days == 91
+    # A policy, not a breach: no deadline, so never "late".
+    assert event.deadline_days is None and event.late_days == 0
+    assert event.detail == (
+        "Field hospital antiviral stockpile lot 23 and 24 purchase. "
+        "Signed by Osprey Federal Systems LLC. "
+        "The Pentagon publishes its contract actions 90 days late."
+    )
+
+
+def test_the_parent_under_another_legal_ending_did_not_sign_for_itself() -> None:
+    line = contract_line(recipient_name="OSPREY THERAPEUTICS CORPORATION", defense=False)
+    (event,) = contract_events(frame("government_contracts", "usaspending", [line]))
+
+    assert event.detail == "Field hospital antiviral stockpile lot 23 and 24 purchase."
+
+
+def test_what_a_contract_action_did_is_said_in_a_verb() -> None:
+    rows = [
+        contract_line(transaction_key="a", modification_number="0", action_type=None),
+        contract_line(transaction_key="b", action_type="FUNDING ONLY ACTION"),
+        contract_line(transaction_key="c", obligation_usd=-12_475_741.0),
+    ]
+    events = contract_events(frame("government_contracts", "usaspending", rows))
+
+    assert [event.verb for event in events] == ["Awarded", "Added", "Took back"]
+    assert [event.direction for event in events] == ["buy", "buy", "sell"]
+    assert events[2].size == "$12.48M" and events[2].value_usd == -12_475_741.0
+
+
+def test_small_contract_actions_stay_out_of_the_feed_by_a_floor() -> None:
+    rows = [contract_line(), contract_line(transaction_key="small", obligation_usd=3_000_000.0)]
+    built = frame("government_contracts", "usaspending", rows)
+
+    assert len(contract_events(built)) == 2
+    assert len(contract_events(built, min_usd=25_000_000.0)) == 1
+
+
 # ----------------------------------------------------------------------- the app --
 @pytest.fixture
 def client(store: Store, settings: Settings, tmp_path: Path) -> TestClient:
@@ -552,6 +626,65 @@ def test_search_finds_tickers_people_and_funds(client: TestClient) -> None:
     assert kinds("oyel") == {"person"}
     assert kinds("harrow") == {"fund"}
     assert client.get("/api/search", params={"q": "o"}).json() == []
+
+
+@pytest.fixture
+def contractor(client: TestClient, store: Store) -> TestClient:
+    store.write(
+        frame(
+            "government_contracts",
+            "usaspending",
+            [
+                contract_line(),
+                contract_line(
+                    transaction_key="civil",
+                    modification_number="0",
+                    action_type=None,
+                    awarding_agency="Department of Health and Human Services",
+                    awarding_sub_agency="Centers for Disease Control and Prevention",
+                    defense=False,
+                    obligation_usd=4_000_000.0,
+                    as_of=at(2026, 9, 10),
+                    known_at=at(2026, 9, 12, 15),
+                ),
+            ],
+        ),
+        asset_class="equity",
+    )
+    return client
+
+
+def test_the_feed_carries_large_contracts_and_the_ticker_page_all_of_them(
+    contractor: TestClient,
+) -> None:
+    feed = contractor.get("/api/feed", params={"as_of": "2026-09-18", "days": 30}).json()
+    in_feed = [event for event in _events(feed) if event["kind"] == "contract"]
+    assert [event["size"] for event in in_feed] == ["$514.41M"]  # the $4M award is under the floor
+
+    page = contractor.get("/api/tickers/OSPR", params={"as_of": "2026-09-18"}).json()
+    contracts = page["contracts"]
+    assert contracts["actions"] == 2 and contracts["net_usd"] == pytest.approx(518_412_527.67)
+    assert [event["size"] for event in contracts["events"]] == ["$514.41M", "$4.00M"]
+    assert contracts["defense_share"] == pytest.approx(0.992)
+    assert contracts["agencies"][0]["name"] == "Department of Defense"
+    # Contracts sit in their own section, not among the people who traded.
+    assert not [event for event in page["events"] if event["kind"] == "contract"]
+    assert "99% of it from the Pentagon, which publishes 90 days late." in page["brief"][-1]
+
+
+def test_an_embargoed_award_is_behind_the_curtain_and_counted_apart(
+    contractor: TestClient,
+) -> None:
+    """On 1 August the June award had happened and was six weeks from public."""
+    past = contractor.get("/api/feed", params={"as_of": "2026-08-01", "days": 30}).json()
+
+    assert not [event for event in _events(past) if event["kind"] == "contract"]
+    assert [event["kind"] for event in past["beyond"]].count("contract") == 1
+    assert past["beyond_contracts_total"] == 1
+    assert (
+        contractor.get("/api/tickers/OSPR", params={"as_of": "2026-08-01"}).json()["contracts"]
+        is None
+    )
 
 
 def test_an_empty_lake_is_an_empty_feed_with_a_way_forward(

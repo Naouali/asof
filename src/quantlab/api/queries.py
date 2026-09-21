@@ -27,6 +27,7 @@ from polars.exceptions import ComputeError
 from quantlab.api.events import (
     Event,
     congress_events,
+    contract_events,
     eastern_date,
     fund_events,
     insider_events,
@@ -46,6 +47,14 @@ BEYOND_DAYS = 200
 BEYOND_LIMIT = 120
 PRICE_HISTORY_DAYS = 370
 TICKER_EVENT_DAYS = 370
+#: Contract actions this size and over reach the feed: about thirty a week across
+#: the mapped contractors. Below it there are fifty a day, nearly all of them
+#: funding increments, and they would bury every trade on the page.
+FEED_CONTRACT_MIN_USD = 25_000_000.0
+#: How many of a company's contract actions its page lists, largest first.
+TICKER_CONTRACTS = 30
+#: How many of those are also drawn on the price chart.
+CHART_CONTRACTS = 8
 
 
 class Lens:
@@ -122,6 +131,7 @@ class Lens:
             *congress_events(trades),
             *unread_report_events(self.frame("congress_filings"), trades),
             *fund_events(self.frame("institutional_holdings"), self.bridge),
+            *contract_events(self.frame("government_contracts"), min_usd=FEED_CONTRACT_MIN_USD),
         ]
         found.sort(key=lambda event: (event.disclosed_at, event.id), reverse=True)
         return found
@@ -155,6 +165,10 @@ def feed(lens: Lens, *, days: int, actor: str | None, live: Lens | None) -> dict
         ]
         # Soonest to surface first: the secret that was about to stop being one.
         beyond.sort(key=lambda event: (event.disclosed_at, event.id))
+    # Capped apart. The Pentagon's embargo keeps hundreds of awards behind the
+    # curtain at any moment, and one cap would leave no room there for a trade.
+    hidden_trades = [event for event in beyond if event.kind != "contract"]
+    hidden_contracts = [event for event in beyond if event.kind == "contract"]
 
     holdings = lens.frame("institutional_holdings")
     latest_period = holdings["as_of"].max() if holdings.height else None
@@ -169,8 +183,12 @@ def feed(lens: Lens, *, days: int, actor: str | None, live: Lens | None) -> dict
             for day, events in sorted(groups.items(), reverse=True)
         ],
         "insights": _cluster_buys(chosen),
-        "beyond": [event.as_dict() for event in beyond[:BEYOND_LIMIT]],
-        "beyond_total": len(beyond),
+        "beyond": [
+            event.as_dict()
+            for event in [*hidden_trades[:BEYOND_LIMIT], *hidden_contracts[:BEYOND_LIMIT]]
+        ],
+        "beyond_total": len(hidden_trades),
+        "beyond_contracts_total": len(hidden_contracts),
         "coverage": {
             "unread_reports": sum(1 for event in chosen if event.kind == "unread"),
             "fund_period": latest_period.date() if isinstance(latest_period, dt.datetime) else None,
@@ -231,25 +249,93 @@ def ticker_page(lens: Lens, ticker: str) -> dict[str, Any]:
     )
     # The feed keeps only each filing's largest fund changes. This page wants every
     # change in THIS security, so funds come from the unabridged list instead.
-    named = [event for event in lens.events if event.ticker == ticker and event.kind != "fund"]
+    # Contracts have a section of their own: a large contractor has a thousand a year.
+    named = [
+        event
+        for event in lens.events
+        if event.ticker == ticker and event.kind not in {"fund", "contract"}
+    ]
     events = [event for event in [*named, *fund_changes] if event.disclosed_on > since]
     events.sort(key=lambda event: (event.disclosed_at, event.id), reverse=True)
     events = [replace(event, price_move_pct=_move(prices, event)) for event in events]
 
     holders = _holders(lens, cusips)
+    contracts = _contracts(lens, ticker, since, prices)
     name = _company_name(events) or _ftd_name(lens, ticker)
     return {
         "as_of": lens.as_of,
         "today": lens.today,
         "ticker": ticker,
         "name": name,
-        "known": bool(events or holders or prices),
+        "known": bool(events or holders or prices or contracts),
         "prices": [{"date": day, "close": close} for day, close in prices],
         "events": [event.as_dict() for event in events],
         "holders": holders,
+        "contracts": contracts,
         "fails_to_deliver": _latest_fails(lens, ticker),
-        "brief": _brief(lens, ticker, events, holders),
+        "brief": [
+            *_brief(lens, ticker, events, holders, bool(contracts)),
+            *_contract_brief(contracts),
+        ],
     }
+
+
+def _contract_brief(contracts: dict[str, Any] | None) -> list[str]:
+    if contracts is None:
+        return []
+    actions = contracts["actions"]
+    sentence = (
+        f"The federal government committed a net {money(contracts['net_usd'])} to it across "
+        f"{actions} contract action{'' if actions == 1 else 's'} made public in the last year"
+    )
+    share = contracts["defense_share"]
+    if share is not None and share >= 0.5:
+        sentence += f", {share:.0%} of it from the Pentagon, which publishes 90 days late"
+    return [sentence + "."]
+
+
+def _contracts(
+    lens: Lens, ticker: str, since: dt.date, prices: list[tuple[dt.date, float]]
+) -> dict[str, Any] | None:
+    """A company's federal contract actions that became public in the last year.
+
+    Every action of $1 million and over is counted; the largest are listed. The
+    net figure is money committed less money taken back, and is NOT revenue: it is
+    spent over the life of each contract, which runs to years.
+    """
+    frame = lens.frame("government_contracts").filter(pl.col("symbol") == ticker)
+    found = [event for event in contract_events(frame) if event.disclosed_on > since]
+    if not found:
+        return None
+    found.sort(key=lambda event: abs(event.value_usd or 0.0), reverse=True)
+    listed = [
+        replace(event, price_move_pct=_move(prices, event)) for event in found[:TICKER_CONTRACTS]
+    ]
+
+    by_agency: dict[str, float] = defaultdict(float)
+    for event in found:
+        by_agency[event.role or event.actor] += event.value_usd or 0.0
+    top = sorted(by_agency.items(), key=lambda pair: pair[1], reverse=True)[:3]
+    return {
+        "actions": len(found),
+        "net_usd": sum(event.value_usd or 0.0 for event in found),
+        "taken_back": sum(1 for event in found if event.direction == "sell"),
+        "defense_share": _defense_share(frame, since),
+        "agencies": [{"name": name, "net_usd": net} for name, net in top],
+        "events": [event.as_dict() for event in listed],
+        "on_chart": [event.id for event in listed[:CHART_CONTRACTS]],
+    }
+
+
+def _defense_share(frame: pl.DataFrame, since: dt.date) -> float | None:
+    """The share of money committed that came from the Pentagon, which is the share
+    of this page that is three months old before anyone can read it."""
+    recent = frame.filter((pl.col("known_at").dt.date() > since) & (pl.col("obligation_usd") > 0))
+    total = float(recent["obligation_usd"].sum()) if recent.height else 0.0
+    if total <= 0:
+        return None
+    defense = float(recent.filter(pl.col("defense"))["obligation_usd"].sum())
+    return round(defense / total, 3)
 
 
 def _company_name(events: list[Event]) -> str | None:
@@ -366,7 +452,11 @@ def _latest_fails(lens: Lens, ticker: str) -> dict[str, Any] | None:
 
 
 def _brief(
-    lens: Lens, ticker: str, events: list[Event], holders: list[dict[str, Any]]
+    lens: Lens,
+    ticker: str,
+    events: list[Event],
+    holders: list[dict[str, Any]],
+    has_contracts: bool = False,
 ) -> list[str]:
     """The page's opening paragraph: what the disclosures add up to, in sentences.
 
@@ -422,7 +512,7 @@ def _brief(
         funds = "One tracked fund" if len(holders) == 1 else f"{len(holders)} tracked funds"
         sentences.append(f"{funds} reported holding it, as of up to {oldest} days ago.")
 
-    if not sentences:
+    if not sentences and not has_contracts:
         sentences.append(f"No disclosure in the lake names {ticker} yet.")
     return sentences
 
@@ -451,12 +541,17 @@ def search(lens: Lens, query: str, *, limit: int = 8) -> list[dict[str, Any]]:
         ).append(hit)
 
     for event in lens.events:
-        if event.ticker:
+        # A contract names the entity that signed, often a subsidiary: a poor label
+        # for the ticker, so other disclosures name it first.
+        if event.ticker and event.kind != "contract":
             offer("ticker", event.ticker, event.ticker, event.asset)
         if event.kind in {"insider", "congress"}:
             offer("person", event.actor_id, event.actor, event.role)
         elif event.kind == "fund":
             offer("fund", event.actor_id, event.actor, "Fund")
+    for event in lens.events:
+        if event.ticker and event.kind == "contract":
+            offer("ticker", event.ticker, event.ticker, "Federal contractor")
     return [*starts, *contains][:limit]
 
 

@@ -10,6 +10,7 @@ const KIND_LABEL: Record<DisclosureEvent["kind"], string> = {
   congress: "Member of Congress",
   fund: "Fund manager",
   unread: "Member of Congress",
+  contract: "Federal agency",
 };
 
 /** "OH02" as a reader writes it: "Ohio's 2nd" is more than the data knows, "OH-02" is not. */
@@ -26,6 +27,7 @@ function standing(event: DisclosureEvent): string | null {
     return event.role === "Senate" ? "Sits in the Senate" : `Represents ${district(event.role)} in the House`;
   }
   if (event.kind === "insider") return event.asset ? `${event.role} of ${event.asset}` : event.role;
+  if (event.kind === "contract") return `Part of the ${event.role}`;
   return event.role;
 }
 
@@ -47,8 +49,13 @@ function chain(event: DisclosureEvent): Step[] {
     {
       day: event.traded_on,
       when: longDay(event.traded_on, true),
-      title: event.kind === "fund" ? "The quarter closed and positions were counted" : "The trade",
-      note: event.kind === "fund" ? "A quarterly report says what was held on this day, not when it was bought." : "Nobody outside could know.",
+      title: event.kind === "fund" ? "The quarter closed and positions were counted" : event.kind === "contract" ? "The contract action" : "The trade",
+      note:
+        event.kind === "fund"
+          ? "A quarterly report says what was held on this day, not when it was bought."
+          : event.kind === "contract"
+            ? "The agency and the company knew. The public record did not show it yet."
+            : "Nobody outside could know.",
       tone: "past",
     },
   ];
@@ -62,7 +69,9 @@ function chain(event: DisclosureEvent): Step[] {
     });
   }
   const filedWith =
-    event.kind !== "congress"
+    event.kind === "contract"
+      ? "The action appeared in the Treasury's public record"
+      : event.kind !== "congress"
       ? "The SEC accepted the filing"
       : event.role === "Senate"
         ? "The report was filed with the Secretary of the Senate"
@@ -71,9 +80,13 @@ function chain(event: DisclosureEvent): Step[] {
     day: event.disclosed_on,
     // The House Clerk publishes a filing date and no time; the Senate prints the
     // minute and the SEC stamps the second.
-    when: event.kind === "congress" && event.role !== "Senate" ? longDay(event.disclosed_on, true) : `${longDay(event.disclosed_on, true)}, ${washingtonTime(event.disclosed_at)} in Washington`,
+    // A contract's publication day is a rule -- reporting plus any embargo -- so no minute is claimed.
+    when: event.kind === "contract" || (event.kind === "congress" && event.role !== "Senate") ? longDay(event.disclosed_on, true) : `${longDay(event.disclosed_on, true)}, ${washingtonTime(event.disclosed_at)} in Washington`,
     title: `${filedWith}. This is when it became public`,
-    note: event.late_days > 0 ? `${plural(event.lag_days, "day")} after the trade, ${plural(event.late_days, "day")} past the deadline.` : `${plural(event.lag_days, "day")} after ${event.kind === "fund" ? "the quarter closed" : "the trade"}.`,
+    note:
+      event.late_days > 0
+        ? `${plural(event.lag_days, "day")} after the trade, ${plural(event.late_days, "day")} past the deadline.`
+        : `${plural(event.lag_days, "day")} after ${event.kind === "fund" ? "the quarter closed" : event.kind === "contract" ? "the action" : "the trade"}.`,
     tone: "public",
   });
   // A stable sort: when the deadline and the filing share a day, the filing came first or on time.
@@ -106,11 +119,12 @@ export function RecordPane({ event }: { event: DisclosureEvent }) {
     );
   }
 
+  const contract = event.kind === "contract";
   const status = event.due_on === null ? "No deadline applies" : event.late_days > 0 ? `${plural(event.late_days, "day")} late` : "On time";
   const facts = [
-    { label: "Size", value: event.value_usd !== null ? dollars(event.value_usd) : event.kind === "congress" ? "Range only" : "Not stated" },
-    { label: "Trade to disclosure", value: plural(event.lag_days, "day") },
-    { label: "Against the deadline", value: status, late: event.late_days > 0 },
+    { label: contract ? "This action" : "Size", value: event.value_usd !== null ? dollars(event.value_usd) : event.kind === "congress" ? "Range only" : "Not stated" },
+    { label: contract ? "Action to publication" : "Trade to disclosure", value: plural(event.lag_days, "day") },
+    { label: "Against the deadline", value: contract ? "None: the delay is policy" : status, late: event.late_days > 0 },
     { label: "Disclosed by", value: KIND_LABEL[event.kind] },
   ];
 
@@ -121,9 +135,10 @@ export function RecordPane({ event }: { event: DisclosureEvent }) {
         {event.actor} {event.verb.toLowerCase()} {event.size}
       </h2>
       <p className="record__lede">
-        {[standing(event), event.detail].filter(Boolean).join(". ")}
+        {[standing(event), event.detail?.replace(/\.$/, "")].filter(Boolean).join(". ")}
         {event.role || event.detail ? "." : ""}
         {event.kind === "congress" && " The law asks for a range, not an amount, so the exact size is not known."}
+        {contract && " The figure is what this one action committed, to be spent over the life of the contract. It is not revenue, and the market usually knew."}
         {event.noise && " This is routine: it is hidden from the feed unless you ask for grants, option exercises and pre-scheduled sales."}
       </p>
 
@@ -157,7 +172,7 @@ export function RecordPane({ event }: { event: DisclosureEvent }) {
       <div className="record__actions">
         {event.source_url && (
           <a className="button button--mark" href={event.source_url} target="_blank" rel="noreferrer">
-            Read the filing
+            {contract ? "Open the award record" : "Read the filing"}
           </a>
         )}
         {event.ticker && (

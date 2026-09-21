@@ -1,6 +1,7 @@
 """One shape for three kinds of disclosure.
 
-An insider's Form 4, a House member's transaction report and a fund's 13F have
+An insider's Form 4, a member of Congress's transaction report, a fund's 13F and a
+federal contract action have
 nothing in common as documents. To a reader they are the same thing: somebody did
 something on one day, and the world found out on another. This module turns each
 dataset into that one shape -- an :class:`Event` -- so the feed, the ticker page
@@ -33,6 +34,7 @@ __all__ = [
     "FUND_DEADLINE_DAYS",
     "Event",
     "congress_events",
+    "contract_events",
     "display_name",
     "fund_events",
     "insider_events",
@@ -42,7 +44,7 @@ __all__ = [
 
 EASTERN = ZoneInfo("America/New_York")
 
-Kind = Literal["insider", "congress", "fund", "unread"]
+Kind = Literal["insider", "congress", "fund", "unread", "contract"]
 Direction = Literal["buy", "sell", "none"]
 
 #: The STOCK Act allows 45 days from the trade to the report.
@@ -571,3 +573,119 @@ def _changes(
     rows.sort(key=lambda pair: pair[0], reverse=True)
     chosen = rows if per_filing is None else rows[:per_filing]
     return [event for _, event in chosen]
+
+
+# --------------------------------------------------------------------- contracts --
+#: Words a government clerk capitalises that a reader would not.
+_SMALL_WORDS = frozenset({"of", "the", "and", "for", "in", "to", "on", "a", "an", "at", "by"})
+
+
+#: Words that are initials, and stay that way.
+_INITIALS = frozenset({"LLC", "LLP", "LP", "USA", "US", "U.S.", "II", "III", "IV", "IT", "NASA"})
+
+
+def _named(raw: str) -> str:
+    """ "DEPT OF THE AIR FORCE" is shouting; "Dept of the Air Force" is a name."""
+    if not raw.isupper():
+        return raw
+    return " ".join(
+        word
+        if word.strip(".,") in _INITIALS or any(char.isdigit() for char in word)
+        else word.lower()
+        if index and word.lower() in _SMALL_WORDS
+        else word.capitalize()
+        for index, word in enumerate(raw.split())
+    )
+
+
+def _sentence(raw: str | None, limit: int = 180) -> str | None:
+    """A description typed in capitals, lowered to a sentence and cut at a word."""
+    if not raw:
+        return None
+    text = " ".join(raw.split())
+    text = text.capitalize() if text.isupper() else text
+    if len(text) > limit:
+        text = text[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+    return text
+
+
+#: Legal endings that do not make "Lockheed Martin Corp" a different company from
+#: "Lockheed Martin Corporation".
+_LEGAL_ENDINGS = frozenset(
+    {"corp", "corporation", "inc", "incorporated", "co", "company", "llc", "lp", "ltd", "the"}
+)
+
+
+def _same_company(one: str, other: str) -> bool:
+    def core(name: str) -> list[str]:
+        words = [word.strip(".,").lower() for word in name.split()]
+        return [word for word in words if word and word not in _LEGAL_ENDINGS]
+
+    return core(one) == core(other)
+
+
+def contract_events(frame: pl.DataFrame, *, min_usd: float = 0.0) -> list[Event]:
+    """Federal contract actions, as events.
+
+    ``direction`` says which way the money moved: ``buy`` is money committed to
+    the company and ``sell`` is money taken back. No deadline applies: the gap
+    between an action and its publication is policy, not lateness -- two days for
+    a civilian agency, three months for the Pentagon.
+    """
+    if frame.height and min_usd > 0:
+        frame = frame.filter(pl.col("obligation_usd").abs() >= min_usd)
+
+    events: list[Event] = []
+    for row in frame.iter_rows(named=True):
+        amount = float(row["obligation_usd"])
+        acted = row["as_of"].date()
+        disclosed_at: dt.datetime = row["known_at"]
+        disclosed = eastern_date(disclosed_at)
+
+        if amount < 0:
+            verb = "Took back"
+        elif row["modification_number"] in (None, "0"):
+            verb = "Awarded"
+        elif (row["action_type"] or "").upper() == "EXERCISE AN OPTION":
+            verb = "Exercised an option for"
+        else:
+            verb = "Added"
+
+        office = _named(row["awarding_sub_agency"] or row["awarding_agency"])
+        department = _named(row["awarding_agency"])
+        signer = _named(str(row["recipient_name"]))
+        described = _sentence(row["description"])
+        notes = [
+            described if described is None or described.endswith((".", "...")) else f"{described}."
+        ]
+        if row["parent_name"] and not _same_company(row["recipient_name"], row["parent_name"]):
+            notes.append(f"Signed by {signer}.")
+        if row["defense"]:
+            notes.append("The Pentagon publishes its contract actions 90 days late.")
+
+        events.append(
+            Event(
+                id=f"contract:{row['transaction_key']}",
+                kind="contract",
+                ticker=row["symbol"],
+                asset=signer,
+                actor=office,
+                actor_id=f"agency:{office.lower()}",
+                role=department if department != office else None,
+                direction="sell" if amount < 0 else "buy",
+                verb=verb,
+                size=money(abs(amount)),
+                detail=" ".join(note for note in notes if note) or None,
+                value_usd=amount,
+                traded_on=acted,
+                disclosed_on=disclosed,
+                disclosed_at=disclosed_at,
+                lag_days=(disclosed - acted).days,
+                deadline_days=None,
+                due_on=None,
+                late_days=0,
+                noise=False,
+                source_url=row["url"],
+            )
+        )
+    return events

@@ -54,7 +54,7 @@ export function ContextPane({ event, today }: { event: DisclosureEvent; today: s
       )}
 
       <section>
-        <h3>{event.kind === "fund" ? "This fund's record" : "Their record"}</h3>
+        <h3>{event.kind === "fund" ? "This fund's record" : event.kind === "contract" ? "This agency's large awards" : "Their record"}</h3>
         {person.data && (
           <p className="context__brief">
             {record.length === 0
@@ -73,7 +73,7 @@ export function ContextPane({ event, today }: { event: DisclosureEvent; today: s
 
       <section>
         <h3>What you can't see here</h3>
-        <p className="context__brief">Congressional reports filed on paper, and anything a fund has done since its last quarter end. Short positions are never disclosed at all.</p>
+        <p className="context__brief">Congressional reports filed on paper, anything a fund has done since its last quarter end, and every Pentagon contract of the last 90 days. Short positions are never disclosed at all.</p>
       </section>
     </div>
   );

@@ -242,8 +242,8 @@ while `potential_value_usd` is a ceiling that must never be summed.
 
 ## The app
 
-**asof** is a read-only web app over the disclosure data: insiders, funds and
-members of the House. It is built around the one thing that data is about -- the
+**asof** is a read-only web app over the disclosure data: insiders, funds,
+members of Congress and federal contracts. It is built around the one thing that data is about -- the
 gap between the day somebody traded and the day anyone else could know.
 
 - **Feed.** Every disclosure, ordered by the day it became public. Pick one and
@@ -264,6 +264,14 @@ gap between the day somebody traded and the day anyone else could know.
   anyone could act. Below it: every disclosure naming the ticker, the tracked
   funds that hold it (joined through the CUSIP bridge, with how stale that is),
   and the settlement fails.
+- **Contracts.** A filter of their own in the feed: federal contract actions of
+  $25 million and over, drawn as triangles in ink, because public money is neither
+  bought nor sold. They stay out of "Everyone", which means everyone who traded.
+  Travel back in time and the curtain shows what the Pentagon had already signed
+  and would not publish for 90 days. Each contractor's ticker page adds a Federal
+  contracts section: the net committed over the year, the agencies it came from,
+  the thirty largest actions with their lag bars, and the eight largest on the
+  price chart. The filter lives in the URL, like the as-of date.
 - **Data health.** What the lake holds, how fresh it is, and which House reports
   were scans that could not be read.
 - **Landing page**, at `/welcome`. One screen, no scrolling, and no mock-ups: the

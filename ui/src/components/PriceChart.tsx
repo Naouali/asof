@@ -148,7 +148,8 @@ export function PriceChart({
 
         {model.marks.map(({ event, x0, y0, x1, y1, clipped }) => {
           const on = event.id === selected;
-          const color = event.direction === "sell" ? SELL : BUY;
+          // Contracts are drawn in ink: blue and orange mean bought and sold.
+          const color = event.kind === "contract" ? "var(--ink)" : event.direction === "sell" ? SELL : BUY;
           const fill = event.direction === "sell" ? "var(--surface)" : color;
           const ring = event.direction === "sell" ? color : "var(--surface)";
           const size = on ? 8 : 6.5;
@@ -161,6 +162,15 @@ export function PriceChart({
               {event.kind === "congress" && <rect x={x1 - size} y={y1 - size} width={size * 2} height={size * 2} fill={fill} stroke={ring} strokeWidth={2} />}
               {event.kind === "fund" && (
                 <rect x={x1 - size} y={y1 - size} width={size * 2} height={size * 2} fill={fill} stroke={ring} strokeWidth={2} transform={`rotate(45 ${x1} ${y1})`} />
+              )}
+              {event.kind === "contract" && (
+                <polygon
+                  points={`${x1},${y1 - size - 1} ${x1 + size + 1},${y1 + size} ${x1 - size - 1},${y1 + size}`}
+                  fill={fill}
+                  stroke={event.direction === "sell" ? color : ring}
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                />
               )}
               <circle className="chart__hit" cx={x1} cy={y1} r={16} onMouseEnter={() => onSelect(event.id)} onClick={() => onSelect(event.id)} />
             </g>

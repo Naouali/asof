@@ -21,7 +21,22 @@ const PILL_CLEARANCE = 7;
  * not knowable on that date; they are shown, dashed, because how much had already
  * happened in secret is the whole reason to look at the past this way.
  */
-export function Timeline({ events, beyond, beyondTotal, today, isLive }: { events: DisclosureEvent[]; beyond: DisclosureEvent[]; beyondTotal: number; today: string; isLive: boolean }) {
+export function Timeline({
+  events,
+  beyond,
+  beyondTotal,
+  today,
+  isLive,
+  noun = "trade",
+}: {
+  events: DisclosureEvent[];
+  beyond: DisclosureEvent[];
+  beyondTotal: number;
+  today: string;
+  isLive: boolean;
+  /** What the rows are, for the sentences that count them. */
+  noun?: string;
+}) {
   const known = events.filter((event) => event.kind !== "unread");
   const knownRows = known.slice(0, MAX_KNOWN);
   const hiddenRows = beyond.slice(0, MAX_HIDDEN);
@@ -54,12 +69,12 @@ export function Timeline({ events, beyond, beyondTotal, today, isLive }: { event
     <div className="timeline">
       {!isLive && beyond.length > 0 && (
         <p className="timeline__headline">
-          On {shortDay(today)}, {plural(beyondTotal, "trade")} had already happened that nobody outside could see yet.
+          On {shortDay(today)}, {plural(beyondTotal, noun)} had already happened that nobody outside could see yet.
         </p>
       )}
 
       <div className="timeline__axis">
-        <div className="timeline__axis-label">Each line runs from the trade to the day it became public</div>
+        <div className="timeline__axis-label">Each line runs from the {noun === "trade" ? "trade" : "action"} to the day it became public</div>
         <div className="timeline__plot">
           {months
             .filter((month) => Math.abs(month.left - asOfAt) > PILL_CLEARANCE && month.left < 90)
@@ -78,7 +93,7 @@ export function Timeline({ events, beyond, beyondTotal, today, isLive }: { event
         {hiddenRows.length > 0 && (
           <Block
             title="Had already happened, not yet public"
-            note={beyondTotal > hiddenRows.length ? `The ${hiddenRows.length} that surfaced soonest, of ${beyondTotal.toLocaleString("en-US")}` : plural(beyondTotal, "trade")}
+            note={beyondTotal > hiddenRows.length ? `The ${hiddenRows.length} that surfaced soonest, of ${beyondTotal.toLocaleString("en-US")}` : plural(beyondTotal, noun)}
             rows={hiddenRows}
             dashed
             {...{ at, months, start, today }}
@@ -153,8 +168,8 @@ function Block({
                 {months.map((month) => (
                   <span key={`${month.label}${month.left}`} className="timeline__grid" style={{ left: `${month.left}%` }} />
                 ))}
-                <span className={`timeline__span timeline__span--${row.direction}${dashed ? " timeline__span--dashed" : ""}`} style={{ left: `${from}%`, width: `max(4px, ${to - from}%)` }} />
-                {clipped ? <span className="timeline__since">since {shortDay(row.traded_on, today)}</span> : <span className={`timeline__start timeline__start--${row.direction}`} style={{ left: `${from}%` }} />}
+                <span className={`timeline__span timeline__span--${row.kind === "contract" ? "contract" : row.direction}${dashed ? " timeline__span--dashed" : ""}`} style={{ left: `${from}%`, width: `max(4px, ${to - from}%)` }} />
+                {clipped ? <span className="timeline__since">since {shortDay(row.traded_on, today)}</span> : <span className={`timeline__start timeline__start--${row.kind === "contract" ? "contract" : row.direction}`} style={{ left: `${from}%` }} />}
                 <span className="timeline__end" style={{ left: `${to}%` }}>
                   <Mark kind={row.kind} direction={row.direction} />
                 </span>

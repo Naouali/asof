@@ -23,7 +23,7 @@ __all__ = [
 
 class EventModel(BaseModel):
     id: str
-    kind: Literal["insider", "congress", "fund", "unread"]
+    kind: Literal["insider", "congress", "fund", "unread", "contract"]
     ticker: str | None
     asset: str | None
     actor: str
@@ -81,6 +81,8 @@ class FeedResponse(BaseModel):
     beyond: list[EventModel]
     #: How many there were in all; `beyond` holds the ones that surfaced soonest.
     beyond_total: int
+    #: Contract actions behind the curtain, counted apart from the trades.
+    beyond_contracts_total: int
     coverage: Coverage
     empty_lake: bool
 
@@ -107,6 +109,27 @@ class Fails(BaseModel):
     posted_on: dt.date
 
 
+class AgencyTotal(BaseModel):
+    name: str
+    net_usd: float
+
+
+class Contracts(BaseModel):
+    """A company's federal contract actions made public in the last year."""
+
+    actions: int
+    #: Money committed less money taken back. Not revenue: it is spent over years.
+    net_usd: float
+    taken_back: int
+    #: Share of money committed that came from the Pentagon, published 90 days late.
+    defense_share: float | None
+    agencies: list[AgencyTotal]
+    #: The largest actions, largest first.
+    events: list[EventModel]
+    #: Ids of the ones drawn on the price chart.
+    on_chart: list[str]
+
+
 class TickerResponse(BaseModel):
     as_of: dt.datetime
     today: dt.date
@@ -116,6 +139,7 @@ class TickerResponse(BaseModel):
     prices: list[PricePoint]
     events: list[EventModel]
     holders: list[Holder]
+    contracts: Contracts | None
     fails_to_deliver: Fails | None
     brief: list[str]
 

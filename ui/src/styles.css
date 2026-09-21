@@ -620,6 +620,11 @@ pre {
   padding: 6px 20px;
 }
 
+.desk__note {
+  margin: 0;
+  padding: 12px 20px 14px;
+}
+
 .desk__day {
   position: sticky;
   top: 0;
@@ -988,6 +993,22 @@ li:first-child > .item {
 .mark--muted {
   border-color: var(--ink-muted);
   background: var(--ink-muted);
+}
+
+/* A federal contract: a triangle, in ink. Blue and orange mean bought and sold,
+   and public money is neither. Committed is solid; taken back is an outline, cut
+   from the same triangle so the two read as one shape. */
+.mark--contract {
+  width: 13px;
+  height: 12px;
+  border: 0;
+  background: var(--ink);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.mark--contract.mark--sell {
+  background: var(--ink);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%, 50% 0, 50% 34%, 22% 86%, 78% 86%, 50% 34%);
 }
 
 .legend {
@@ -1629,6 +1650,10 @@ li:first-child > .item {
   border-top-color: var(--ink-muted);
 }
 
+.timeline__span--contract {
+  border-top-color: var(--ink);
+}
+
 .timeline__span--dashed {
   border-top-style: dashed;
 }
@@ -1650,6 +1675,10 @@ li:first-child > .item {
 
 .timeline__start--none {
   border-color: var(--ink-muted);
+}
+
+.timeline__start--contract {
+  border-color: var(--ink);
 }
 
 .timeline__since {

@@ -1,7 +1,8 @@
 // The API's response shapes. Mirrors src/quantlab/api/models.py, which is the
 // contract; /api/docs renders it.
 
-export type Kind = "insider" | "congress" | "fund" | "unread";
+export type Kind = "insider" | "congress" | "fund" | "unread" | "contract";
+/** For a contract: "buy" is money committed to the company, "sell" is money taken back. */
 export type Direction = "buy" | "sell" | "none";
 
 export interface DisclosureEvent {
@@ -40,6 +41,8 @@ export interface FeedResponse {
   /** Had already happened on the as-of date, not public until after it. Only ever drawn behind the curtain. */
   beyond: DisclosureEvent[];
   beyond_total: number;
+  /** Contract actions behind the curtain, counted apart from the trades. */
+  beyond_contracts_total: number;
   coverage: {
     unread_reports: number;
     fund_period: string | null;
@@ -59,6 +62,20 @@ export interface Holder {
   age_days: number;
 }
 
+/** A company's federal contract actions made public in the last year. */
+export interface Contracts {
+  actions: number;
+  /** Money committed less money taken back. Not revenue: it is spent over years. */
+  net_usd: number;
+  taken_back: number;
+  defense_share: number | null;
+  agencies: { name: string; net_usd: number }[];
+  /** The largest actions, largest first. */
+  events: DisclosureEvent[];
+  /** Ids of the ones drawn on the price chart. */
+  on_chart: string[];
+}
+
 export interface TickerResponse {
   as_of: string;
   today: string;
@@ -68,6 +85,7 @@ export interface TickerResponse {
   prices: { date: string; close: number }[];
   events: DisclosureEvent[];
   holders: Holder[];
+  contracts: Contracts | null;
   fails_to_deliver: { quantity: number; settled_on: string; posted_on: string } | null;
   brief: string[];
 }

@@ -43,7 +43,7 @@ function sample(events: DisclosureEvent[], start: string): DisclosureEvent[] {
 function TradesPanel({ feed }: { feed: FeedResponse }) {
   const today = feed.today;
   const start = addDays(today, -WINDOW_DAYS);
-  const events = useMemo(() => feed.groups.flatMap((group) => group.events).filter((event) => !event.noise && event.kind !== "unread"), [feed]);
+  const events = useMemo(() => feed.groups.flatMap((group) => group.events).filter((event) => !event.noise && event.kind !== "unread" && event.kind !== "contract"), [feed]);
   const rows = useMemo(() => sample(events, start), [events, start]);
   const [back, setBack] = useState(34);
   const [hovered, setHovered] = useState<DisclosureEvent | null>(null);
