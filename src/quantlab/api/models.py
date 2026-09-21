@@ -163,10 +163,28 @@ class DatasetHealth(BaseModel):
     bytes: int
 
 
+class RefusedSymbol(BaseModel):
+    symbol: str
+    reason: str
+    attempts: int
+    retry_after: dt.date
+
+
+class Unpriced(BaseModel):
+    """How much of what was disclosed the lake can actually price. Every return
+    figure in the app is measured on `priced` of `wanted` tickers."""
+
+    wanted: int
+    priced: int
+    refused: list[RefusedSymbol]
+    refused_total: int
+
+
 class DataHealth(BaseModel):
     datasets: list[DatasetHealth]
     unread_reports: list[EventModel]
     runs: list[dict[str, object]]
+    unpriceable: Unpriced
 
 
 class Health(BaseModel):
@@ -281,6 +299,62 @@ class PortfolioResponse(BaseModel):
     priced_share: float
     #: Null unless enough of the portfolio has prices for a figure to mean anything.
     returns: PortfolioReturns | None
+
+
+# ---------------------------------------------------------------- track record --
+class Record(BaseModel):
+    """A filer's measured record: the mean and what the sample can support."""
+
+    trades: int
+    mean_excess_pct: float
+    #: The 95% interval of the mean. Null with a single trade.
+    low_pct: float | None
+    high_pct: float | None
+    median_excess_pct: float
+    beat_rate: float
+    #: True only when that interval is clear of zero.
+    distinguishable: bool
+
+
+class FilerRecord(Record):
+    actor_id: str
+    actor: str
+    role: str | None
+    #: The same trades entered on the day the filer made them, not the day they
+    #: became public. The gap between the two is what the delay cost a follower.
+    own_mean_excess_pct: float | None
+    first: dt.date
+    last: dt.date
+    ranked: bool
+
+
+class Luck(BaseModel):
+    """How good the leader would look if nobody had any skill at all."""
+
+    best_mean_excess_pct: float
+    shuffles: int
+    #: The share of shuffles producing a leader at least this good. Near 1 is noise.
+    as_good_by_chance: float
+
+
+class TrackRecords(BaseModel):
+    as_of: dt.datetime
+    today: dt.date
+    horizon_days: int
+    benchmark: str
+    min_trades: int
+    measured: int
+    filers: int
+    ranked: int
+    #: Trades left out: no prices, or the holding window has not closed yet.
+    unpriced: int
+    unfinished: int
+    everyone: Record | None
+    standouts: int
+    luck: Luck | None
+    expected_by_luck: float
+    people: list[FilerRecord]
+    why_empty: str | None
 
 
 # ------------------------------------------------------------------------- rules --

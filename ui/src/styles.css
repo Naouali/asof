@@ -3396,3 +3396,65 @@ li:first-child > .item {
     padding-block: 6px;
   }
 }
+
+/* Tickers a price source refused: a gap named, not an absence. */
+.refused {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  list-style: none;
+}
+
+.refused li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-size: 13px;
+}
+
+.refused__more {
+  border-style: dashed;
+  color: var(--ink-muted);
+}
+
+/* The leader board. Five columns, and the interval under the figure it belongs to. */
+.ledger--board .ledger__head,
+.row--board {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.6fr) 70px minmax(110px, 1fr) 100px 90px;
+  align-items: center;
+  column-gap: 14px;
+}
+
+.row--board {
+  padding: 9px 16px;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--mark);
+  border-radius: 999px;
+  color: var(--mark);
+  font-size: 11px;
+}
+
+@media (max-width: 860px) {
+  .ledger--board .ledger__head {
+    display: none;
+  }
+
+  .row--board {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 4px;
+  }
+
+  .row--board .row__who {
+    grid-column: 1 / -1;
+  }
+}

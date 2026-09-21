@@ -838,3 +838,35 @@ def test_any_page_path_serves_the_app_and_nothing_outside_it(
     assert client.get("/assets/app.js").text == "console.log(1)"
     assert "not yours" not in client.get("/%2e%2e/secret.txt").text
     assert "not yours" not in client.get("/..%2fsecret.txt").text
+
+
+def test_data_health_says_how_much_of_what_was_disclosed_can_be_priced(
+    client: TestClient, store: Store
+) -> None:
+    """Every return in the app is measured on the tickers that have prices. The
+    page says how many do not, so the gap is a number rather than an absence."""
+    from quantlab.data.unpriceable import Unpriceable
+
+    record = Unpriceable(store.layout.state)
+    record.failed("yahoo", "BOGUS", "[yahoo] BOGUS: no data")
+    record.failed("yahoo", "NOTATICKER", "[yahoo] no data")
+    record.save()
+    store.write(
+        frame(
+            "congress_trades",
+            "house_clerk",
+            [
+                congress_line(doc_id="p1", symbol="BOGUS"),
+                congress_line(doc_id="p2", symbol="NOTATICKER"),
+            ],
+        ),
+        asset_class="equity",
+    )
+
+    found = client.get("/api/data").json()["unpriceable"]
+
+    # OSPR is disclosed and has no prices either, but nothing refused it.
+    assert found["wanted"] == 3 and found["priced"] == 0
+    assert found["refused_total"] == 2
+    assert {row["symbol"] for row in found["refused"]} == {"BOGUS", "NOTATICKER"}
+    assert found["refused"][0]["attempts"] == 1

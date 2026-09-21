@@ -40,29 +40,26 @@ jobs:
     symbols: []
 
   # ---------------------------------------------------------------- equity ----
+  # Prices for every ticker anybody has disclosed, read from the lake at run time
+  # rather than typed here: disclosures name new tickers every week, and a list in
+  # a file is a list nobody edits. `per_symbol` fetches them one at a time, so a
+  # ticker that is misspelt, delisted or was never a ticker costs itself and not
+  # the other two thousand; the failures are named in the run's result and shown
+  # on the Data health page. The benchmark and index ETFs are named because no
+  # disclosure mentions them and a return needs something to be measured against.
+  #
+  # Start 2015: before that, a window that ends before a company listed is an
+  # error from Yahoo rather than an empty answer, and the oldest disclosure the
+  # lake holds is from 2015.
   - fetcher: yahoo.ohlcv_daily
     description: >-
-      Daily bars. Survivorship-biased (delisted tickers vanish) and retroactively
-      split-adjusted, so use returns, not price levels. See docs/LIMITATIONS.md.
-    start: "2005-01-01"
-    symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ,
-              # The EDGAR fundamentals universe.
-              AAPL, MSFT, JNJ, KO, PG, XOM, JPM, PFE, WMT, HD, CVX, MRK, PEP, CSCO, INTC,
-              # The insider-transactions universe, so a ticker page has a price
-              # to draw its disclosures against.
-              NVDA, AMZN, GOOGL, META, TSLA, UNH]
-
-  - fetcher: yahoo.ohlcv_daily
-    description: >-
-      Daily bars for the federal contractors, so their pages have a price to draw
-      contracts against. A job of its own because of its start: Yahoo answers a
-      window that ends before a company was listed with an error, not with
-      nothing, and Amentum only listed in 2024. From 2019 every window holds data.
-      PFE, MRK and UNH are in the job above.
-    start: "2019-01-01"
-    symbols: [LMT, BA, RTX, GD, NOC, LDOS, HII, MCK, FLR, LHX, BAH, AMTM, HUM, CACI,
-              SAIC, COR, TXT, ORCL, HON, PLTR, GE, GEO, VVX, KBR, RS, T, PSN, OSK,
-              TKR, IBM, FDX, MMS, TPC, SNEX]
+      Daily bars for everything disclosed, plus the benchmarks. Survivorship-biased
+      (delisted tickers vanish) and retroactively split-adjusted, so use returns,
+      not price levels. See docs/LIMITATIONS.md.
+    start: "2015-01-01"
+    per_symbol: true
+    symbols_from: [congress_trades, insider_transactions, government_contracts]
+    symbols: [SPY, QQQ, IWM, DIA, TLT, IEF, GLD, SLV, USO, HYG, LQD, EFA, EEM, VNQ]
 
   - fetcher: yahoo.corporate_actions
     description: >-

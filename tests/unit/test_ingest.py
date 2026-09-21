@@ -19,9 +19,12 @@ from quantlab.data.ingest import (
     load_plan,
     recent_runs,
     run_plan,
+    symbols_in,
 )
+from quantlab.data.schemas import get_schema
 from quantlab.data.sources.base import SOURCE_REGISTRY, Source
 from quantlab.data.store import Store
+from quantlab.data.unpriceable import Unpriceable
 
 
 class _FakeSource(Source):
@@ -278,3 +281,190 @@ def test_no_regression_warning_on_a_first_ingest(
     with caplog.at_level(logging.WARNING):
         run_plan(plan_with(), store=store, settings=settings)
     assert "ingest.coverage_regression" not in caplog.text
+
+
+# ------------------------------------------------------- symbols from the lake --
+def _disclosed(store: Store, symbols: list[str]) -> None:
+    """Congressional trades naming these tickers, so a job can read them back."""
+    rows = [
+        {
+            "source": "house_clerk",
+            "dataset": "congress_trades",
+            "symbol": symbol,
+            "as_of": dt.datetime(2026, 7, 2, tzinfo=dt.UTC),
+            "known_at": dt.datetime(2026, 8, 1, tzinfo=dt.UTC),
+            "ingested_at": dt.datetime(2026, 8, 1, tzinfo=dt.UTC),
+            "chamber": "house",
+            "doc_id": f"d{index}",
+            "line": 1,
+            "member": "Hon. Tom Villareal",
+            "transaction_type": "purchase",
+            "amount_min": 1001.0,
+        }
+        for index, symbol in enumerate(symbols)
+    ]
+    schema = get_schema("congress_trades")
+    frame = pl.DataFrame(rows, infer_schema_length=None)
+    missing = [
+        pl.lit(None, dtype=dtype).alias(name)
+        for name, dtype in schema.polars_schema.items()
+        if name not in frame.columns
+    ]
+    store.write(schema.validate(frame.with_columns(missing)), asset_class=AssetClass.EQUITY)
+
+
+def test_a_job_can_take_its_symbols_from_what_the_lake_holds(
+    store: Store, settings: Settings
+) -> None:
+    """The point: a ticker disclosed for the first time last night gets priced
+    tonight, without anybody editing a file."""
+    _disclosed(store, ["AAPL", "NVDA", "NO_TICKER", "", "msft"])
+
+    run_plan(
+        plan_with(symbols_from=("congress_trades",), per_symbol=True),
+        store=store,
+        settings=settings,
+    )
+
+    stored = store.scan("ohlcv_daily", dedup=False).collect()
+    assert sorted(stored["symbol"].unique().to_list()) == ["AAPL", "MSFT", "NVDA"]
+
+
+def test_placeholders_are_not_asked_for(store: Store, settings: Settings) -> None:
+    _disclosed(store, ["NO_TICKER", "-", "N/A"])
+    assert symbols_in(store, ["congress_trades"]) == []
+
+
+def test_symbols_from_an_empty_lake_is_not_an_error(store: Store, settings: Settings) -> None:
+    assert symbols_in(store, ["congress_trades", "insider_transactions"]) == []
+
+
+# ----------------------------------------------------------- one symbol at a time --
+class _PickySource(_FakeSource):
+    """Serves some tickers and refuses others, as a real price source does."""
+
+    name: ClassVar[str] = "yahoo.picky"
+    refuses: ClassVar[set[str]] = set()
+    asked: ClassVar[list[str]] = []
+    windows: ClassVar[dict[str, tuple[dt.datetime, dt.datetime]]] = {}
+
+    def fetch(self, symbols, start, end):
+        type(self).asked.extend(symbols)
+        for symbol in symbols:
+            type(self).windows[symbol] = (start, end)
+        for symbol in symbols:
+            if symbol in type(self).refuses:
+                raise SourceError("yahoo", f"{symbol}: no data")
+        return super().fetch(symbols, start, end)
+
+
+@pytest.fixture
+def picky() -> None:
+    SOURCE_REGISTRY["yahoo.picky"] = _PickySource
+    _PickySource.refuses = set()
+    _PickySource.asked = []
+    _PickySource.windows = {}
+    yield
+    SOURCE_REGISTRY.pop("yahoo.picky", None)
+
+
+def _picky_plan(**kwargs: object) -> IngestPlan:
+    return IngestPlan(
+        jobs=(IngestJob(fetcher="yahoo.picky", per_symbol=True, **kwargs),),  # type: ignore[arg-type]
+        default_start=dt.date(2024, 1, 1),
+    )
+
+
+def test_one_bad_ticker_does_not_cost_the_others(
+    store: Store, settings: Settings, picky: None
+) -> None:
+    """The failure that made this necessary: members type tickers by hand, and the
+    whole job used to store nothing when one of them was not real."""
+    _PickySource.refuses = {"BOGUS"}
+
+    result = run_plan(
+        _picky_plan(symbols=("AAPL", "BOGUS", "NVDA")), store=store, settings=settings
+    )
+
+    (job,) = result.jobs
+    assert job.ok and job.rows == 6  # three sessions each for the two real ones
+    assert job.failed_symbols == (("BOGUS", "[yahoo] BOGUS: no data"),)
+    assert sorted(store.scan("ohlcv_daily", dedup=False).collect()["symbol"].unique()) == [
+        "AAPL",
+        "NVDA",
+    ]
+
+
+def test_a_source_that_serves_nothing_is_still_a_failure(
+    store: Store, settings: Settings, picky: None
+) -> None:
+    """A list of bad tickers is a gap; a source refusing everything is a breakage."""
+    _PickySource.refuses = {"AAPL", "NVDA"}
+
+    result = run_plan(_picky_plan(symbols=("AAPL", "NVDA")), store=store, settings=settings)
+
+    assert not result.ok
+    assert "none of 2 symbols" in (result.jobs[0].error or "")
+
+
+def test_a_failed_symbol_is_not_asked_again_the_next_night(
+    store: Store, settings: Settings, picky: None
+) -> None:
+    _PickySource.refuses = {"BOGUS"}
+    run_plan(_picky_plan(symbols=("AAPL", "BOGUS")), store=store, settings=settings)
+    _PickySource.asked = []
+
+    again = run_plan(_picky_plan(symbols=("AAPL", "BOGUS")), store=store, settings=settings)
+
+    assert "BOGUS" not in _PickySource.asked
+    assert again.jobs[0].resting_symbols == 1
+    held = Unpriceable(settings.layout.state).all()
+    assert [(row.symbol, row.attempts) for row in held] == [("BOGUS", 1)]
+    assert held[0].reason == "[yahoo] BOGUS: no data"
+
+
+def test_a_ticker_that_starts_working_is_forgiven(
+    store: Store, settings: Settings, picky: None
+) -> None:
+    """A ticker can fail because a server was down, not because it is not real."""
+    _PickySource.refuses = {"AAPL"}
+    run_plan(_picky_plan(symbols=("AAPL",)), store=store, settings=settings)
+    record = Unpriceable(settings.layout.state)
+    assert record.all()
+
+    # Pretend the wait has passed, and let the source serve it this time.
+    record.failed("yahoo", "AAPL", "earlier failure")
+    held = record.all()[0]
+    object.__setattr__(held, "retry_after", held.last_tried - dt.timedelta(days=1))
+    record._held[("yahoo", "AAPL")] = held
+    record.save()
+    _PickySource.refuses = set()
+
+    run_plan(_picky_plan(symbols=("AAPL",)), store=store, settings=settings)
+
+    assert Unpriceable(settings.layout.state).all() == []
+
+
+def test_each_symbol_resumes_from_its_own_history(
+    store: Store, settings: Settings, picky: None
+) -> None:
+    """A newly-seen ticker needs its whole history while the others are topped up."""
+    store.write(
+        pl.DataFrame(
+            [bar("AAPL", dt.date(2024, 1, 5), 100.0)],
+            schema=get_schema("ohlcv_daily").polars_schema,
+        ),
+        asset_class=AssetClass.EQUITY,
+    )
+    _PickySource.asked = []
+
+    run_plan(
+        _picky_plan(symbols=("AAPL", "NVDA"), overlap_days=0),
+        store=store,
+        settings=settings,
+        incremental=True,
+    )
+
+    windows = _PickySource.windows
+    assert windows["AAPL"][0].date() == dt.date(2024, 1, 5)  # topped up from what it holds
+    assert windows["NVDA"][0].date() == dt.date(2024, 1, 1)  # never seen: from the start

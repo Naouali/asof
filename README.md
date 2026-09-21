@@ -99,8 +99,25 @@ uv run quantlab data ingest
 ## What gets ingested
 
 [configs/ingest.yaml](configs/ingest.yaml) is the ingest plan: one job per fetcher,
-with its symbols, start date and options. Symbol lists are deliberately small —
-widen them once you know what you need.
+with its symbols, start date and options.
+
+A job can take its symbols from the lake instead of naming them:
+
+```yaml
+  - fetcher: yahoo.ohlcv_daily
+    per_symbol: true
+    symbols_from: [congress_trades, insider_transactions, government_contracts]
+    symbols: [SPY, QQQ, ...]          # added to whatever the lake names
+```
+
+`symbols_from` is resolved on every run, so a ticker disclosed for the first time
+last night is priced tonight and no list needs editing. `per_symbol` fetches them
+one at a time: a ticker that is misspelt, delisted or was never a ticker costs
+itself and not the other two thousand. Those failures are named in the run's
+result, written to `data/state/unpriceable_symbols.json` with the day to try again,
+and shown on the app's Data health page — a gap that is reported, never a silence.
+A job whose every symbol fails is still a failure: that is a broken source, not a
+list of bad tickers.
 
 ```bash
 quantlab data ingest                              # every job in the plan
@@ -299,14 +316,22 @@ gap between the day somebody traded and the day anyone else could know.
   return over time: closed trades at their exit over their entry price, open ones
   marked to each day's close, beside the same trades copied on the days they became
   public. Follows the as-of date.
-- **Analytics**, at `/analytics`. Three questions asked of the whole lake, one screen
+- **Analytics**, at `/analytics`. Four questions asked of the whole lake, one screen
   each, all following the as-of date. *What is being traded* ranks tickers by how
   many PEOPLE bought and sold, never by dollars, because Congress discloses ranges
   and funds disclose positions. *Price moved before you knew* shows, per group, how
   far the price had gone between a trade and the day it became public, measured
   only where the lake holds prices and saying how few tickers that is. *Government
   money* adds up contract actions by company, agency and month of publication,
-  and, on a past date, counts what had been signed and was not public yet.
+  and, on a past date, counts what had been signed and was not public yet. *Who is
+  worth following* is the one that decides whether any of this is worth acting on:
+  every purchase is bought at the close of the day it became public, held for a
+  fixed span, and compared with the same money in SPY over exactly the same days.
+  A window that has not closed by the as-of date is not measured, because scoring
+  it means peeking. Every figure carries the number of trades behind it and the
+  interval of its mean, a record that cannot be told from luck is labelled as such,
+  and the leader board is read against a shuffle: the same trades dealt out at
+  random, to see how good chance alone makes the best of a hundred people look.
 - **Data health.** What the lake holds, how fresh it is, and which House reports
   were scans that could not be read.
 - **Landing page**, at `/welcome`. One screen, no scrolling, and no mock-ups: the

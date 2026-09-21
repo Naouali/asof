@@ -31,6 +31,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Sequence
 from typing import Any, ClassVar
+from urllib.parse import quote as url_quote
 
 import polars as pl
 
@@ -46,7 +47,7 @@ from quantlab.data.sources.base import Source, register
 from quantlab.data.store import utcnow
 from quantlab.logging import get_logger
 
-__all__ = ["YahooCorporateActions", "YahooDailyBars"]
+__all__ = ["YahooCorporateActions", "YahooDailyBars", "as_yahoo"]
 
 log = get_logger("quantlab.data.sources.yahoo")
 
@@ -76,6 +77,26 @@ CHUNK = dt.timedelta(days=365 * 8)
 #: no Yahoo metadata, so it holds even when the payload lies about itself, and it
 #: catches holes in the middle of a history, which no metadata check can see.
 MIN_SESSION_COVERAGE = 0.95
+
+
+#: Yahoo's wording when the whole requested window predates the listing.
+_BEFORE_LISTING = ("data doesn't exist for startdate", "no data found, symbol may be delisted")
+
+
+def _before_listing(message: str) -> bool:
+    lowered = message.lower()
+    return "http 400" in lowered and any(mark in lowered for mark in _BEFORE_LISTING)
+
+
+def as_yahoo(symbol: str) -> str:
+    """A ticker as Yahoo spells it.
+
+    Share classes are the only difference that matters: a filing says ``BRK.B``
+    and Yahoo wants ``BRK-B``. The lake keeps the filing's spelling, because that
+    is what a reader looking for the trade will search for; only the request is
+    translated.
+    """
+    return symbol.strip().upper().replace(".", "-")
 
 
 def _windows(start: dt.datetime, end: dt.datetime) -> list[tuple[dt.datetime, dt.datetime]]:
@@ -160,8 +181,21 @@ class _YahooChart(Source):
         )
 
     def _chart(self, symbol: str, start: dt.datetime, end: dt.datetime) -> dict[str, Any]:
+        try:
+            return self._chart_request(symbol, start, end)
+        except SourceError as exc:
+            if not _before_listing(str(exc)):
+                raise
+            # Yahoo answers a window that ends before the company listed with an
+            # error, not with an empty result. It is the same fact -- there are no
+            # bars -- and an IPO from 2016 must not cost its whole history because
+            # the job asked from 2015.
+            log.info("yahoo.window_before_listing", symbol=symbol, start=start.date().isoformat())
+            return {}
+
+    def _chart_request(self, symbol: str, start: dt.datetime, end: dt.datetime) -> dict[str, Any]:
         payload = self.client.get_json(
-            CHART_URL.format(symbol=symbol),
+            CHART_URL.format(symbol=url_quote(as_yahoo(symbol), safe="")),
             params={
                 "period1": int(start.timestamp()),
                 # Yahoo's period2 is exclusive of the bar starting at that instant;

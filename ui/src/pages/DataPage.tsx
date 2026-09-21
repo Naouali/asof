@@ -19,6 +19,7 @@ export function DataPage({ today }: { today: string }) {
 
   const sets = [...data.datasets].sort((a, b) => Number(DISCLOSURE_SETS.has(b.dataset)) - Number(DISCLOSURE_SETS.has(a.dataset)) || a.dataset.localeCompare(b.dataset));
   const run = data.runs[0];
+  const coverage = data.unpriceable.wanted > 0 ? Math.round((data.unpriceable.priced / data.unpriceable.wanted) * 100) : null;
 
   return (
     <div className="page page--data">
@@ -29,6 +30,32 @@ export function DataPage({ today }: { today: string }) {
             <p className="pagehead__lede">What the lake holds right now, and how old the newest thing in it is. This page is never read through the as-of date: it describes the machinery, not the market.</p>
           </div>
         </header>
+
+        <section aria-labelledby="priced-title">
+          <div className="sectionhead">
+            <h2 id="priced-title">Tickers the lake can price</h2>
+          </div>
+          <p className="note">
+            {coverage === null
+              ? "No disclosure names a ticker yet."
+              : `${data.unpriceable.priced.toLocaleString("en-US")} of the ${data.unpriceable.wanted.toLocaleString("en-US")} tickers named in disclosures have prices here, ${coverage}%. Every return in this app — a portfolio's chart, the price move before a disclosure — is measured on those and on no others.`}
+            {data.unpriceable.refused_total > 0 &&
+              ` ${plural(data.unpriceable.refused_total, "ticker")} were asked for and refused: usually misspelt, delisted, or never a ticker. They are retried on the dates below.`}
+          </p>
+          {data.unpriceable.refused.length > 0 && (
+            <ul className="refused">
+              {data.unpriceable.refused.map((row) => (
+                <li key={row.symbol} title={row.reason}>
+                  <strong>{row.symbol}</strong>
+                  <span className="row__sub">retry {shortDay(row.retry_after, today)}</span>
+                </li>
+              ))}
+              {data.unpriceable.refused_total > data.unpriceable.refused.length && (
+                <li className="refused__more">and {(data.unpriceable.refused_total - data.unpriceable.refused.length).toLocaleString("en-US")} more</li>
+              )}
+            </ul>
+          )}
+        </section>
 
         <section aria-labelledby="sets-title">
           <div className="sectionhead">

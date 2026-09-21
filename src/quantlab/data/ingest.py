@@ -19,6 +19,15 @@ old value stays on disk where a point-in-time query can still find it.
 
 **Failure is loud and total.** A failing job is recorded and the run exits
 non-zero. Nothing is substituted, nothing is skipped silently.
+
+**A symbol is not a job.** A job that names two thousand tickers -- every one any
+disclosure mentions -- will meet some that no price source can serve: misspelt,
+delisted, foreign, never a ticker at all. In ``per_symbol`` mode each is fetched
+on its own, a failure costs that symbol and no other, and the symbols that failed
+are counted, named in the result, and written down (see
+:mod:`quantlab.data.unpriceable`) so the app can show what the lake cannot price.
+That is not silence: it is the difference between a gap that is reported and a
+job that stores nothing.
 """
 
 from __future__ import annotations
@@ -41,6 +50,7 @@ from quantlab.data.schemas import get_schema
 from quantlab.data.sources import load_all_sources
 from quantlab.data.sources.base import Source, get_fetcher
 from quantlab.data.store import Store, utcnow
+from quantlab.data.unpriceable import Unpriceable
 from quantlab.logging import get_logger
 
 __all__ = [
@@ -57,6 +67,15 @@ __all__ = [
 log = get_logger("quantlab.data.ingest")
 
 DEFAULT_OVERLAP_DAYS = 7
+#: Rows held before a write, in ``per_symbol`` mode. Writing every symbol on its
+#: own would leave thousands of tiny parquet files; holding them all would lose a
+#: long run's work to one interruption.
+WRITE_EVERY_ROWS = 50_000
+#: Symbols whose names come from the lake are taken from these columns.
+SYMBOL_COLUMN = "symbol"
+#: Placeholders that are not tickers. `NO_TICKER` is this project's own marker for
+#: a bond or fund a filer named without one.
+NOT_A_TICKER = frozenset({"NO_TICKER", "", "-", "--", "N/A", "NA", "NONE"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +84,13 @@ class IngestJob:
 
     fetcher: str
     symbols: tuple[str, ...] = ()
+    #: Datasets whose symbols this job should fetch, read from the lake each run.
+    #: A price job that says `[congress_trades]` prices whatever Congress traded,
+    #: including whatever they traded for the first time last night.
+    symbols_from: tuple[str, ...] = ()
+    #: Fetch one symbol at a time, tolerating individual failures. For a long,
+    #: open-ended symbol list, where one bad ticker must not cost the other 1,689.
+    per_symbol: bool = False
     start: dt.date | None = None
     end: dt.date | None = None
     options: dict[str, Any] = field(default_factory=dict)
@@ -111,6 +137,10 @@ class JobResult:
     ok: bool
     error: str | None = None
     skipped_reason: str | None = None
+    #: Symbols this run asked for and could not get, with the reason.
+    failed_symbols: tuple[tuple[str, str], ...] = ()
+    #: Symbols left out because they failed recently and are not due to be retried.
+    resting_symbols: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -123,6 +153,10 @@ class JobResult:
             "ok": self.ok,
             "error": self.error,
             "skipped_reason": self.skipped_reason,
+            "failed_symbols": [
+                {"symbol": symbol, "reason": reason} for symbol, reason in self.failed_symbols
+            ],
+            "resting_symbols": self.resting_symbols,
         }
 
 
@@ -184,6 +218,8 @@ def load_plan(path: Path) -> IngestPlan:
             IngestJob(
                 fetcher=fetcher,
                 symbols=tuple(str(s) for s in entry.get("symbols", ())),
+                symbols_from=tuple(str(s) for s in entry.get("symbols_from", ())),
+                per_symbol=bool(entry.get("per_symbol", False)),
                 start=_as_date(entry["start"], f"{path}:{fetcher}.start")
                 if "start" in entry
                 else None,
@@ -254,6 +290,53 @@ def _coverage_regressions(
     ]
 
 
+def symbols_in(store: Store, datasets: Sequence[str]) -> list[str]:
+    """Every ticker named in these datasets, as the filers wrote it.
+
+    This is how a job says "price whatever anybody has disclosed" instead of
+    naming tickers in a file that nobody remembers to edit. Placeholders are
+    dropped; nothing else is judged here, because a ticker that looks odd may
+    still be real and a source is the only thing that can say.
+    """
+    found: set[str] = set()
+    for dataset in datasets:
+        try:
+            frame = store.scan(dataset, dedup=False).select(SYMBOL_COLUMN).unique().collect()
+        except (FileNotFoundError, ComputeError):
+            log.info("ingest.symbols_from.empty", dataset=dataset)
+            continue
+        for symbol in frame[SYMBOL_COLUMN].to_list():
+            text = str(symbol or "").strip().upper()
+            if text and text not in NOT_A_TICKER:
+                found.add(text)
+    return sorted(found)
+
+
+def _resume_points(
+    store: Store, source: str, dataset: str, symbols: Sequence[str]
+) -> dict[str, dt.datetime]:
+    """The newest ``as_of`` stored for each symbol.
+
+    Per symbol, not per job: a ticker first seen in a disclosure last night has
+    nothing in the lake, and must be fetched from the job's start date while the
+    others are only topped up.
+    """
+    try:
+        frame = (
+            store.scan(dataset, source=source, symbols=list(symbols) or None, dedup=False)
+            .group_by(SYMBOL_COLUMN)
+            .agg(pl.col("as_of").max().alias("newest"))
+            .collect()
+        )
+    except (FileNotFoundError, ComputeError):
+        return {}
+    return {
+        str(symbol): newest
+        for symbol, newest in zip(frame[SYMBOL_COLUMN], frame["newest"], strict=True)
+        if isinstance(newest, dt.datetime)
+    }
+
+
 def _resume_point(
     store: Store, source: str, dataset: str, symbols: Sequence[str]
 ) -> dt.datetime | None:
@@ -264,6 +347,112 @@ def _resume_point(
     except (FileNotFoundError, ComputeError):  # pragma: no cover - empty lake
         return None
     return newest if isinstance(newest, dt.datetime) else None
+
+
+def _run_per_symbol(
+    job: IngestJob,
+    source: Source,
+    *,
+    store: Store,
+    settings: Settings,
+    symbols: list[str],
+    dataset: str,
+    source_key: str,
+    start_at: dt.datetime,
+    job_end: dt.datetime,
+    incremental: bool,
+    began: dt.datetime,
+) -> JobResult:
+    """Fetch a long symbol list one symbol at a time.
+
+    One symbol's failure costs that symbol. It is named in the result, written to
+    the unpriceable record so the next run does not immediately ask again, and
+    shown in the app. The job fails only if EVERY symbol failed, which is not a
+    list of bad tickers but a broken source.
+    """
+    unpriceable = Unpriceable(settings.layout.state)
+    resting = set(unpriceable.resting(source_key, symbols))
+    wanted = [symbol for symbol in symbols if symbol not in resting]
+    resume = _resume_points(store, source_key, dataset, wanted) if incremental else {}
+    schema = get_schema(dataset)
+
+    held: list[pl.DataFrame] = []
+    pending = rows = served = 0
+    failed: list[tuple[str, str]] = []
+
+    def flush() -> None:
+        nonlocal held, pending
+        if not held:
+            return
+        store.write(pl.concat(held, how="vertical_relaxed"), asset_class=source.asset_class)
+        held, pending = [], 0
+
+    try:
+        with source:
+            for index, symbol in enumerate(wanted, start=1):
+                since = start_at
+                if (newest := resume.get(symbol)) is not None:
+                    since = max(since, newest - dt.timedelta(days=job.overlap_days))
+                if since > job_end:
+                    served += 1
+                    continue
+                try:
+                    frame = schema.validate(source.fetch([symbol], since, job_end))
+                except (SourceError, ValueError, KeyError) as exc:
+                    reason = str(exc)
+                    failed.append((symbol, reason))
+                    unpriceable.failed(source_key, symbol, reason)
+                    log.warning(
+                        "ingest.symbol.failed", fetcher=job.fetcher, symbol=symbol, error=reason
+                    )
+                    continue
+                served += 1
+                unpriceable.served(source_key, symbol)
+                if frame.height:
+                    held.append(frame)
+                    pending += frame.height
+                    rows += frame.height
+                if pending >= WRITE_EVERY_ROWS:
+                    flush()
+                    log.info(
+                        "ingest.job.progress",
+                        fetcher=job.fetcher,
+                        done=index,
+                        of=len(wanted),
+                        rows=rows,
+                        failed=len(failed),
+                    )
+            flush()
+    finally:
+        flush()
+        unpriceable.save()
+
+    everything_failed = bool(wanted) and served == 0
+    log.info(
+        "ingest.job.finish",
+        fetcher=job.fetcher,
+        rows=rows,
+        symbols_served=served,
+        symbols_failed=len(failed),
+        symbols_resting=len(resting),
+    )
+    return JobResult(
+        fetcher=job.fetcher,
+        symbols=len(wanted),
+        rows=rows,
+        start=start_at,
+        end=job_end,
+        seconds=(utcnow() - began).total_seconds(),
+        ok=not everything_failed,
+        error=(
+            f"none of {len(wanted)} symbols could be fetched; the source is not "
+            f"serving anything. Last failure: {failed[-1][1]}"
+            if everything_failed
+            else None
+        ),
+        failed_symbols=tuple(failed),
+        resting_symbols=len(resting),
+    )
 
 
 def run_plan(
@@ -289,10 +478,16 @@ def run_plan(
         fetcher_class = get_fetcher(job.fetcher)
         dataset = fetcher_class.dataset
         source_key = fetcher_class.spec.key
-        symbols = list(job.symbols) or list(fetcher_class.default_symbols)
+        symbols = list(job.symbols)
+        if job.symbols_from:
+            symbols = sorted(set(symbols) | set(symbols_in(store, job.symbols_from)))
+        symbols = symbols or list(fetcher_class.default_symbols)
 
         start_at = dt.datetime.combine(job.start or plan.default_start, dt.time.min, tzinfo=dt.UTC)
-        if incremental:
+        # In per-symbol mode each symbol resumes from its OWN history, inside
+        # _run_per_symbol. Moving the whole job forward here would carry the other
+        # symbols' progress onto a ticker that has none, and it would get one bar.
+        if incremental and not job.per_symbol:
             resume = _resume_point(store, source_key, dataset, symbols)
             if resume is not None:
                 # Step back over the overlap window so late corrections are seen.
@@ -359,7 +554,25 @@ def run_plan(
             symbols=len(symbols),
             start=start_at.isoformat(),
             end=job_end.isoformat(),
+            per_symbol=job.per_symbol,
         )
+        if job.per_symbol:
+            results.append(
+                _run_per_symbol(
+                    job,
+                    source,
+                    store=store,
+                    settings=settings,
+                    symbols=symbols,
+                    dataset=dataset,
+                    source_key=source_key,
+                    start_at=start_at,
+                    job_end=job_end,
+                    incremental=incremental,
+                    began=began,
+                )
+            )
+            continue
         try:
             with source:
                 frame = source.fetch(symbols, start_at, job_end)

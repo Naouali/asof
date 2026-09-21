@@ -2,18 +2,19 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { LagBar } from "../components/LagBar";
 import { Mark } from "../components/Mark";
-import type { ContractsAnalytics, ContractTotal, PriceMovesResponse, Spread, TradedResponse } from "../lib/api";
+import type { ContractsAnalytics, ContractTotal, FilerRecord, PriceMovesResponse, Spread, TrackRecords, TradedResponse } from "../lib/api";
 import { dollars, monthName, plural, roundDollars, shortDay, signedPercent } from "../lib/format";
 import { useApi, useAsOf, useRules, useTitle } from "../lib/hooks";
 import { actorHref, hasPortfolio, portfolioHref, tickerHref } from "../lib/links";
 import { Problem } from "./FeedPage";
 
-type Tab = "traded" | "moves" | "money";
+type Tab = "traded" | "moves" | "money" | "following";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "traded", label: "What is being traded" },
   { key: "moves", label: "Price moved before you knew" },
   { key: "money", label: "Government money" },
+  { key: "following", label: "Who is worth following" },
 ];
 const KINDS = [
   { key: "", label: "Everyone" },
@@ -57,6 +58,7 @@ export function AnalyticsPage() {
       {tab === "traded" && <Traded kind={params.get("kind") ?? ""} days={Number(params.get("days")) || 90} setParam={setParam} />}
       {tab === "moves" && <Moves days={Number(params.get("days")) || 365} setParam={setParam} />}
       {tab === "money" && <Money />}
+      {tab === "following" && <Following horizon={Number(params.get("horizon")) || 90} setParam={setParam} />}
     </div>
   );
 }
@@ -417,3 +419,151 @@ function Money() {
     </div>
   );
 }
+
+// ----------------------------------------------------------------- following --
+const HORIZONS = [30, 90, 180];
+
+/** How the reader should hold the leader board: is it skill, or is it a hundred
+ * people and a coin? The sentence at the top answers that before any name. */
+function verdict(data: TrackRecords): string {
+  if (!data.luck || data.ranked === 0) return "Not enough finished trades to rank anybody yet.";
+  const chance = data.luck.as_good_by_chance;
+  const best = signedPercent(data.luck.best_mean_excess_pct);
+  if (chance >= 0.2)
+    return `Nobody stands apart from chance. Dealing the same trades out at random produced a leader as good as ${best} in ${Math.round(chance * 100)}% of ${data.luck.shuffles} shuffles, so this ranking is what ${plural(data.ranked, "filer")} and a coin look like.`;
+  return `The leader is hard to explain by chance: dealing the same trades out at random produced someone as good as ${best} in only ${Math.round(chance * 100)}% of ${data.luck.shuffles} shuffles. That is not proof of skill — it is one period, one holding span, and only the trades this lake can price.`;
+}
+
+function Following({ horizon, setParam }: { horizon: number; setParam: (key: string, value: string | null) => void }) {
+  const { asOf, search } = useAsOf();
+  const { data, error, loading } = useApi<TrackRecords>("/api/analytics/track-record", { as_of: asOf, horizon });
+  if (error) return <Problem message={error} />;
+  if (!data) return <p className="loading">Measuring…</p>;
+
+  const ranked = data.people.filter((person) => person.ranked);
+  const rest = data.people.filter((person) => !person.ranked);
+
+  return (
+    <div className={`analytics__body${loading ? " analytics__body--stale" : ""}`}>
+      <div className="analytics__lead">
+        <p className="brief">{verdict(data)}</p>
+        <div className="analytics__controls">
+          <label className="select">
+            <span className="visually-hidden">Holding span</span>
+            <select value={horizon} onChange={(event) => setParam("horizon", event.target.value)}>
+              {HORIZONS.map((value) => (
+                <option key={value} value={value}>
+                  Held {value} days
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {data.measured === 0 ? (
+        <div className="empty">
+          <h2>Nothing can be measured yet.</h2>
+          <p>{data.why_empty ?? `No trade has both a price history and a finished ${horizon}-day window before this date.`}</p>
+        </div>
+      ) : (
+        <div className="analytics__grid analytics__grid--money">
+          <section className="panel" aria-labelledby="following-board">
+            <h2 className="panel__title" id="following-board">
+              Bought on the day it became public, held {data.horizon_days} days, against {data.benchmark}
+            </h2>
+            <p className="note">
+              Every purchase whose {data.horizon_days}-day window had closed by this date, entered at the first price a reader could have paid. What is shown is the difference from putting the same money in {data.benchmark} over
+              exactly the same days. {plural(data.measured, "trade")} from {plural(data.filers, "filer")} could be measured; {plural(data.ranked, "filer")} made at least {data.min_trades} of them and are ranked.
+              {data.unpriced > 0 && ` ${data.unpriced.toLocaleString("en-US")} more are in tickers the lake cannot price.`}
+            </p>
+            {ranked.length === 0 ? (
+              <p className="note">Nobody has {plural(data.min_trades, "finished trade")} yet.</p>
+            ) : (
+              <div className="ledger ledger--board">
+                <div className="ledger__head" aria-hidden="true">
+                  <span>Filer</span>
+                  <span className="ledger__num">Trades</span>
+                  <span className="ledger__num">A follower got</span>
+                  <span className="ledger__num">They got</span>
+                  <span className="ledger__num">Beat {data.benchmark}</span>
+                </div>
+                <ul className="ledger__rows">
+                  {ranked.map((person) => (
+                    <Line key={person.actor_id} person={person} search={search} />
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+
+          <div className="analytics__stack">
+            <section className="panel" aria-labelledby="following-all">
+              <h2 className="panel__title" id="following-all">
+                Every measured trade, pooled
+              </h2>
+              {data.everyone && (
+                <p className="note">
+                  Across all {plural(data.everyone.trades, "trade")}, following a disclosure was worth{" "}
+                  <strong>{signedPercent(data.everyone.mean_excess_pct)}</strong> against {data.benchmark} on average
+                  {data.everyone.low_pct !== null && data.everyone.high_pct !== null && ` (between ${signedPercent(data.everyone.low_pct)} and ${signedPercent(data.everyone.high_pct)}, 19 times in 20)`}, with a median of{" "}
+                  {signedPercent(data.everyone.median_excess_pct)} and {Math.round(data.everyone.beat_rate * 100)}% of trades beating it.{" "}
+                  {!data.everyone.distinguishable && "That interval contains zero: pooled, following everybody is indistinguishable from buying the index."}
+                </p>
+              )}
+              <p className="note">
+                {data.standouts === 0
+                  ? `No filer's interval is clear of zero.`
+                  : `${plural(data.standouts, "filer")} have an interval clear of zero; with ${plural(data.ranked, "filer")} ranked, about ${data.expected_by_luck} would clear it by luck alone.`}
+              </p>
+            </section>
+            {rest.length > 0 && (
+              <section className="panel" aria-labelledby="following-thin">
+                <h2 className="panel__title" id="following-thin">
+                  Measured, too few to rank
+                </h2>
+                <p className="note">Fewer than {plural(data.min_trades, "finished trade")}. Shown so nobody is missing, not so they can be compared.</p>
+                <ul className="tally">
+                  {rest.slice(0, 10).map((person) => (
+                    <li key={person.actor_id}>
+                      <Link to={portfolioHref(person.actor_id, search)}>{person.actor}</Link>
+                      <span className="tally__sub">
+                        {plural(person.trades, "trade")}, {signedPercent(person.mean_excess_pct)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Line({ person, search }: { person: FilerRecord; search: string }) {
+  return (
+    <li className="row row--board" title={`${person.trades} trades between ${person.first} and ${person.last}`}>
+      <div className="row__who">
+        <Link to={portfolioHref(person.actor_id, search)}>{person.actor}</Link>
+        <div className="row__sub">
+          {person.role}
+          {person.distinguishable && <span className="badge">clear of zero</span>}
+        </div>
+      </div>
+      <div className="ledger__num">{person.trades}</div>
+      <div className="ledger__num">
+        <strong>{signedPercent(person.mean_excess_pct)}</strong>
+        {person.low_pct !== null && person.high_pct !== null && (
+          <div className="row__sub">
+            {signedPercent(person.low_pct)} to {signedPercent(person.high_pct)}
+          </div>
+        )}
+      </div>
+      <div className="ledger__num">{person.own_mean_excess_pct === null ? "" : signedPercent(person.own_mean_excess_pct)}</div>
+      <div className="ledger__num">{Math.round(person.beat_rate * 100)}%</div>
+    </li>
+  );
+}
+

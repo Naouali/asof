@@ -69,6 +69,15 @@ VENUE_ALIASES: dict[str, str] = {
     "ncm": "XNAS",
     "bats": "XNYS",
     "cboe bzx": "XNYS",
+    # OTC Markets: the ADRs and foreign shares members disclose constantly. It is
+    # a quotation system, not an exchange, and it keeps the NYSE's hours and
+    # holidays -- so the NYSE calendar is the right one, not a guess at one.
+    "otc markets otcpk": "XNYS",
+    "otc markets otcqb": "XNYS",
+    "otc markets otcqx": "XNYS",
+    "otc markets": "XNYS",
+    "pnk": "XNYS",
+    "otc": "XNYS",
     "lse": "XLON",
     "lon": "XLON",
     "xetra": "XETR",

@@ -34,10 +34,11 @@ from quantlab.api.events import (
     money,
     unread_report_events,
 )
-from quantlab.data.ingest import recent_runs
+from quantlab.data.ingest import recent_runs, symbols_in
 from quantlab.data.schemas import empty_frame
 from quantlab.data.sources.usaspending import DEFENSE_EMBARGO
 from quantlab.data.store import Store, utcnow
+from quantlab.data.unpriceable import Unpriceable
 
 __all__ = ["Lens", "data_health", "feed", "search", "ticker_page"]
 
@@ -51,6 +52,10 @@ TICKER_EVENT_DAYS = 370
 #: The two windows a ticker page's opening paragraph talks about.
 BRIEF_RECENT_DAYS = 30
 BRIEF_QUARTER_DAYS = 90
+#: Datasets whose tickers the app expects to have prices for. Mirrors the
+#: `symbols_from` of the price job in configs/ingest.yaml.
+PRICED_FROM = ("congress_trades", "insider_transactions", "government_contracts")
+UNPRICEABLE_SHOWN = 60
 #: Fund reports older than this are not compared at all. The longest window any
 #: page shows is a year, and a report surfaces up to 45 days after its quarter.
 FUND_HISTORY_DAYS = 550
@@ -622,4 +627,45 @@ def data_health(store: Store, lens: Lens) -> dict[str, Any]:
     ]
     unread = [event.as_dict() for event in lens.events if event.kind == "unread"]
     runs = recent_runs(store.layout.state, limit=10)
-    return {"datasets": datasets, "unread_reports": unread, "runs": list(reversed(runs))}
+    return {
+        "datasets": datasets,
+        "unread_reports": unread,
+        "runs": list(reversed(runs)),
+        "unpriceable": _unpriceable(store, lens),
+    }
+
+
+def _unpriceable(store: Store, lens: Lens) -> dict[str, Any]:
+    """Tickers somebody disclosed that the lake cannot price.
+
+    Every return figure in the app is measured on the tickers that have prices.
+    This says how many do not, and names the ones a source refused, so the gap is
+    a number on a page rather than an absence nobody sees.
+    """
+    wanted = set(symbols_in(store, PRICED_FROM))
+    try:
+        priced = set(
+            store.scan("ohlcv_daily", dedup=False)
+            .select("symbol")
+            .unique()
+            .collect()["symbol"]
+            .to_list()
+        )
+    except (FileNotFoundError, ComputeError):
+        priced = set()
+    record = Unpriceable(store.layout.state)
+    refused = [row for row in record.all() if row.symbol in wanted]
+    return {
+        "wanted": len(wanted),
+        "priced": len(wanted & priced),
+        "refused": [
+            {
+                "symbol": row.symbol,
+                "reason": row.reason,
+                "attempts": row.attempts,
+                "retry_after": eastern_date(row.retry_after),
+            }
+            for row in refused[:UNPRICEABLE_SHOWN]
+        ],
+        "refused_total": len(refused),
+    }

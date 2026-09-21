@@ -211,7 +211,7 @@ function Portfolio({ actor }: { actor: string }) {
               Drawn from {plural(data.performance.purchases, "purchase")} in {data.performance.tickers} of the {plural(data.holdings.length + data.closed.length, "ticker")} they bought: the ones the lake has prices for.
             </strong>{" "}
             A trade they have closed earns its exit price over its entry price, and then stands still. A trade still open is valued at each day's close. The line is everything gained so far over everything put in so far, sized at
-            the middle of each disclosed range. Sales of shares never seen bought take no part, because they have no entry price.
+            the middle of each disclosed range. Sales of shares never seen bought take no part, because they have no entry price. Dividends are not counted: this is a price return.
           </p>
         </section>
       ) : (

@@ -540,3 +540,60 @@ def test_yahoo_accepts_a_complete_history(settings: Settings) -> None:
         for d in sessions(venue, dt.date(2024, 1, 3), dt.date(2024, 3, 28))
     ]
     _check_session_coverage("AAPL", venue, rows)  # must not raise
+
+
+# ------------------------------------------------------------- yahoo symbols --
+def test_a_share_class_is_asked_for_as_yahoo_spells_it(settings: Settings) -> None:
+    """A filing says BRK.B and Yahoo wants BRK-B. The lake keeps the filing's
+    spelling, because that is what a reader searching for the trade will type."""
+    payload = load_json_fixture("yahoo_chart_aapl_2014.json")
+    source, requested = routed_source(YahooDailyBars, {"chart/": payload}, settings)
+    frame = source.fetch(["BRK.B"], START, END)
+
+    assert any("chart/BRK-B" in url for url in requested)
+    assert frame["symbol"].unique().to_list() == ["BRK.B"]
+
+
+def test_a_window_entirely_before_the_listing_is_empty_not_an_error(
+    settings: Settings,
+) -> None:
+    """Yahoo answers such a window with HTTP 400. Treating that as a failure cost
+    every company that listed after the job's start date its whole history."""
+    refusal = {
+        "chart": {
+            "result": None,
+            "error": {
+                "code": "Bad Request",
+                "description": "Data doesn't exist for startDate = 1104537600, endDate = 1356912000",
+            },
+        }
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json=refusal)
+
+    http = HttpClient(
+        YahooDailyBars.spec,
+        settings=settings,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        rate_limiter=RateLimiter(1000.0),
+    )
+    source = YahooDailyBars(client=http, settings=settings)
+
+    assert source.fetch(["NEWCO"], START, END).height == 0
+
+
+def test_a_real_refusal_is_still_a_failure(settings: Settings) -> None:
+    """Only the "before the listing" wording is forgiven; anything else must raise."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"chart": {"error": {"code": "Not Found"}}})
+
+    http = HttpClient(
+        YahooDailyBars.spec,
+        settings=settings,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        rate_limiter=RateLimiter(1000.0),
+    )
+    with pytest.raises(SourceError, match="HTTP 404"):
+        YahooDailyBars(client=http, settings=settings).fetch(["GONE"], START, END)

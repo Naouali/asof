@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.unit.test_api import at, congress_line, contract_line, frame, insider_line
 
-from quantlab.api import analytics, create_app
+from quantlab.api import analytics, create_app, track_record
 from quantlab.api.events import insider_events
 from quantlab.api.queries import Lens
 from quantlab.config import Settings
@@ -245,3 +245,141 @@ def test_the_three_analyses_are_served(lake: Store, settings: Settings, tmp_path
     assert moves.json()["measured"] == 5
     assert money.json()["hidden"]["actions"] == 1
     assert client.get("/api/analytics/traded", params={"kind": "contract"}).status_code == 422
+
+
+# ------------------------------------------------------------- track record --
+# Everything here happens in the spring, because a bar is only storable once it is
+# in the past: the lake refuses a price knowable in the future, which is the same
+# discipline this module is about.
+# A bar is stamped at the 21:00 close, which is the same day in Washington; at
+# midnight UTC it would be the evening before, and land on the wrong session.
+BOUGHT = at(2026, 3, 2, 21)
+FILED = at(2026, 4, 17, 3, 59)  # public 16 April in Washington
+MEMBER_EXIT = at(2026, 4, 1, 21)  # thirty days after the trade
+PUBLIC = at(2026, 4, 16, 21)
+AFTER_30 = at(2026, 5, 16, 21)  # thirty days after it became public
+LOOKING = at(2026, 5, 20, 23)
+
+
+def _spring(**overrides: Any) -> dict[str, Any]:
+    return congress_line(as_of=at(2026, 3, 2), known_at=FILED, **overrides)
+
+
+def _bench(store: Store, closes: dict[dt.datetime, float]) -> None:
+    store.write(_prices("SPY", closes), asset_class="equity")
+
+
+def test_a_record_is_measured_from_the_day_the_trade_became_public(store: Store) -> None:
+    """The filer's own price was available to nobody else, so it is not the price
+    a follower is scored at. Both are reported; the gap is what the delay cost."""
+    store.write(frame("congress_trades", "house_clerk", [_spring()]), asset_class="equity")
+    store.write(
+        _prices(
+            "OSPR",
+            {BOUGHT: 100.0, MEMBER_EXIT: 132.0, PUBLIC: 120.0, AFTER_30: 132.0},
+        ),
+        asset_class="equity",
+    )
+    _bench(store, {BOUGHT: 100.0, MEMBER_EXIT: 102.0, PUBLIC: 100.0, AFTER_30: 102.0})
+
+    found = track_record.records(Lens(store, LOOKING), horizon=30, min_trades=1)
+
+    (person,) = found["people"]
+    assert person["mean_excess_pct"] == 8.0  # a follower: in at 120, +10%, less 2%
+    assert person["own_mean_excess_pct"] == 30.0  # the member: in at 100, +32%, less 2%
+    assert person["trades"] == 1 and person["ranked"] is True
+
+
+def test_a_window_that_has_not_finished_is_not_measured(store: Store) -> None:
+    """Scoring a trade disclosed last week over thirty days means peeking."""
+    store.write(frame("congress_trades", "house_clerk", [_spring()]), asset_class="equity")
+    store.write(_prices("OSPR", {BOUGHT: 100.0, PUBLIC: 120.0}), asset_class="equity")
+    _bench(store, {BOUGHT: 100.0, PUBLIC: 100.0})  # the window is still open
+
+    found = track_record.records(Lens(store, at(2026, 4, 20, 23)), horizon=30, min_trades=1)
+
+    assert found["measured"] == 0 and found["unfinished"] == 1
+    assert found["people"] == []
+
+
+def test_a_thin_record_is_measured_but_not_ranked(store: Store) -> None:
+    """A mean of one trade is an anecdote with a decimal point."""
+    store.write(frame("congress_trades", "house_clerk", [_spring()]), asset_class="equity")
+    store.write(_prices("OSPR", {PUBLIC: 100.0, AFTER_30: 150.0}), asset_class="equity")
+    _bench(store, {PUBLIC: 100.0, AFTER_30: 100.0})
+
+    found = track_record.records(Lens(store, LOOKING), horizon=30, min_trades=10)
+
+    (person,) = found["people"]
+    assert person["ranked"] is False and found["ranked"] == 0
+    # One trade can never be told from luck, however large it is.
+    assert person["distinguishable"] is False and person["low_pct"] is None
+
+
+def test_the_shuffle_says_how_good_chance_alone_would_look(store: Store) -> None:
+    """With enough filers somebody always leads. The question the leader board has
+    to answer is whether dealing the same trades out at random does as well."""
+    flat = {PUBLIC: 100.0, AFTER_30: 100.0}
+    rows = [
+        _spring(
+            doc_id=f"d{index}",
+            line=index,
+            symbol=f"T{index % 2}",
+            member="Hon. Ada Reyes" if index % 2 else "Hon. Tom Villareal",
+            state_district="NM01" if index % 2 else "TX21",
+        )
+        for index in range(24)
+    ]
+    store.write(frame("congress_trades", "house_clerk", rows), asset_class="equity")
+    for ticker in ("T0", "T1"):  # both do exactly what the market does: no skill anywhere
+        store.write(_prices(ticker, flat), asset_class="equity")
+    _bench(store, flat)
+
+    found = track_record.records(Lens(store, LOOKING), horizon=30, min_trades=5)
+
+    assert found["luck"]["as_good_by_chance"] == 1.0
+    assert found["standouts"] == 0
+
+
+def test_a_trade_in_a_ticker_with_no_prices_is_counted_as_unpriced(store: Store) -> None:
+    store.write(
+        frame("congress_trades", "house_clerk", [_spring(symbol="ZZZZ")]), asset_class="equity"
+    )
+    _bench(store, {PUBLIC: 100.0, AFTER_30: 100.0})
+
+    found = track_record.records(Lens(store, LOOKING), horizon=30, min_trades=1)
+
+    assert found["measured"] == 0 and found["unpriced"] == 1
+
+
+def test_without_a_benchmark_no_record_is_offered(store: Store) -> None:
+    """An excess return needs something to be in excess of."""
+    store.write(frame("congress_trades", "house_clerk", [_spring()]), asset_class="equity")
+    store.write(_prices("OSPR", {PUBLIC: 100.0, AFTER_30: 150.0}), asset_class="equity")
+
+    found = track_record.records(Lens(store, LOOKING), horizon=30, min_trades=1)
+
+    assert found["measured"] == 0 and "SPY" in (found["why_empty"] or "")
+
+
+def test_the_api_serves_the_track_record(store: Store, settings: Settings, tmp_path: Path) -> None:
+    store.write(frame("congress_trades", "house_clerk", [_spring()]), asset_class="equity")
+    store.write(
+        _prices(
+            "OSPR",
+            {BOUGHT: 100.0, MEMBER_EXIT: 132.0, PUBLIC: 120.0, AFTER_30: 132.0},
+        ),
+        asset_class="equity",
+    )
+    _bench(store, {BOUGHT: 100.0, MEMBER_EXIT: 102.0, PUBLIC: 100.0, AFTER_30: 102.0})
+    client = TestClient(create_app(settings, ui_dir=tmp_path / "no-ui"))
+
+    found = client.get(
+        "/api/analytics/track-record",
+        params={"as_of": "2026-05-20", "horizon": 30, "min_trades": 1},
+    )
+
+    assert found.status_code == 200
+    body = found.json()
+    assert body["benchmark"] == "SPY" and body["horizon_days"] == 30
+    assert body["people"][0]["mean_excess_pct"] == 8.0

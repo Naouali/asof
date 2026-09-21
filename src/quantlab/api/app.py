@@ -30,7 +30,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from quantlab import __version__
-from quantlab.api import analytics, portfolios, queries
+from quantlab.api import analytics, portfolios, queries, track_record
 from quantlab.api import rules as app_rules
 from quantlab.api.events import EASTERN, eastern_date
 from quantlab.api.models import (
@@ -44,6 +44,7 @@ from quantlab.api.models import (
     Rules,
     SearchHit,
     TickerResponse,
+    TrackRecords,
     TradedResponse,
 )
 from quantlab.api.queries import Lens
@@ -195,6 +196,15 @@ def create_app(
     def analytics_contracts(as_of: AsOf = None) -> dict[str, Any]:
         lens, live = lenses.get(as_of)
         return analytics.contracts(lens, live=live)
+
+    @app.get("/api/analytics/track-record", response_model=TrackRecords)
+    def analytics_track_record(
+        as_of: AsOf = None,
+        horizon: Annotated[int, Query(ge=1, le=400)] = track_record.DEFAULT_HORIZON,
+        min_trades: Annotated[int, Query(ge=1, le=200)] = track_record.MIN_TRADES,
+    ) -> dict[str, Any]:
+        lens, _ = lenses.get(as_of)
+        return track_record.records(lens, horizon=horizon, min_trades=min_trades)
 
     @app.get("/api/portfolios", response_model=PortfolioMembers)
     def portfolio_members(as_of: AsOf = None) -> dict[str, Any]:

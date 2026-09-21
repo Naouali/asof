@@ -97,6 +97,15 @@ export interface SearchHit {
   note: string | null;
 }
 
+export interface Unpriced {
+  /** Tickers named in disclosures. */
+  wanted: number;
+  /** How many of them the lake has prices for: every return figure rests on these. */
+  priced: number;
+  refused: { symbol: string; reason: string; attempts: number; retry_after: string }[];
+  refused_total: number;
+}
+
 export interface DataHealth {
   datasets: {
     source: string;
@@ -113,8 +122,9 @@ export interface DataHealth {
   runs: {
     started_at?: string;
     incremental?: boolean;
-    jobs?: { fetcher: string; rows: number; ok: boolean; error: string | null; skipped_reason: string | null }[];
+    jobs?: { fetcher: string; rows: number; ok: boolean; error: string | null; skipped_reason: string | null; failed_symbols?: { symbol: string; reason: string }[] }[];
   }[];
+  unpriceable: Unpriced;
 }
 
 export class ApiError extends Error {
@@ -299,3 +309,48 @@ export interface ContractsAnalytics {
   /** Signed by the as-of date and not public yet. Null when looking at today. */
   hidden: { actions: number; net_usd: number; defense_actions: number } | null;
 }
+
+// -------------------------------------------------------------- track record --
+/** A measured record: the mean and what the size of the sample can support. */
+export interface Record_ {
+  trades: number;
+  mean_excess_pct: number;
+  low_pct: number | null;
+  high_pct: number | null;
+  median_excess_pct: number;
+  beat_rate: number;
+  /** True only when that interval is clear of zero. */
+  distinguishable: boolean;
+}
+
+export interface FilerRecord extends Record_ {
+  actor_id: string;
+  actor: string;
+  role: string | null;
+  /** The same trades entered the day the filer made them: the delay's cost. */
+  own_mean_excess_pct: number | null;
+  first: string;
+  last: string;
+  ranked: boolean;
+}
+
+export interface TrackRecords {
+  as_of: string;
+  today: string;
+  horizon_days: number;
+  benchmark: string;
+  min_trades: number;
+  measured: number;
+  filers: number;
+  ranked: number;
+  unpriced: number;
+  unfinished: number;
+  everyone: Record_ | null;
+  standouts: number;
+  /** How good the leader would look if nobody had any skill at all. */
+  luck: { best_mean_excess_pct: number; shuffles: number; as_good_by_chance: number } | null;
+  expected_by_luck: number;
+  people: FilerRecord[];
+  why_empty: string | null;
+}
+
