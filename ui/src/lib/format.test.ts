@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addDays, daysBetween, dollars, lastFundDeadline, longDay, plural, shares, shortDay, signedPercent, stampDay } from "./format";
+import { addDays, daysBetween, dollars, lastFundDeadline, longDay, plural, roundDollars, shares, shortDay, signedPercent, stampDay } from "./format";
 
 describe("dates are Washington calendar days, printed the same everywhere", () => {
   it("does not shift a day by the reader's time zone", () => {
@@ -22,9 +22,16 @@ describe("dates are Washington calendar days, printed the same everywhere", () =
 
 describe("the last day quarterly fund holdings were due", () => {
   it("is 45 days after the most recent quarter end that has passed", () => {
-    expect(lastFundDeadline("2026-09-18")).toBe("2026-08-14");
-    expect(lastFundDeadline("2026-08-14")).toBe("2026-05-15");
-    expect(lastFundDeadline("2026-01-20")).toBe("2025-11-14");
+    expect(lastFundDeadline("2026-09-18", 45)).toBe("2026-08-14");
+    expect(lastFundDeadline("2026-08-14", 45)).toBe("2026-05-15");
+    expect(lastFundDeadline("2026-01-20", 45)).toBe("2025-11-14");
+  });
+
+  it("moves with the deadline it is given, and is never a fixed list of dates", () => {
+    expect(lastFundDeadline("2026-09-18", 60)).toBe("2026-08-29");
+    expect(roundDollars(25_000_000)).toBe("$25 million");
+    expect(roundDollars(1_500_000_000)).toBe("$1.5 billion");
+    expect(roundDollars(750_000)).toBe("$750,000");
   });
 });
 

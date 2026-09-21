@@ -1,0 +1,186 @@
+# Listed federal contractors, and the government's parent-company identifiers for each.
+#
+# A federal contract names a legal entity ("Sikorsky Aircraft Corporation"), never a
+# ticker. The government groups entities under a PARENT, identified by a UEI, and
+# this file is the only link from a parent to a listed company. Nothing official
+# provides one, and matching by name would file contracts under the wrong company.
+#
+# Rules this list follows:
+#   - One company, several parents: the government files some subsidiaries as
+#     parents of their own, so they are listed under their owner, with a note.
+#   - No joint ventures: they belong to no single ticker.
+#   - No parents listed abroad: their US tickers are depositary receipts.
+#   - Every ticker was checked against the SEC's list of registrants.
+#
+# Compiled 2026-09-21 from USAspending's ranking of its largest contract recipients
+# (POST https://api.usaspending.gov/api/v2/recipient/ with award_type "contracts").
+# A company missing from this file has NO contracts in the lake: it is absent, not
+# idle. After an acquisition the government's own parent records lag by months.
+#
+# To add a company: find its parent UEI in that ranking or on a USAspending
+# recipient page, add it here, and re-run the ingest. The file is validated when
+# it is loaded: a UEI claimed twice, or one that is not 12 characters, is an error.
+
+contractors:
+  - ticker: LMT
+    name: Lockheed Martin
+    parent_ueis:
+      - ZFN2JJXBLZT3
+      - CWM4UN76ZQW8
+  - ticker: BA
+    name: Boeing
+    parent_ueis:
+      - NU2UC8MX6NK1
+  - ticker: UNH
+    name: UnitedHealth Group
+    parent_ueis:
+      - GVW2YMAK1AC1
+  - ticker: RTX
+    name: RTX
+    parent_ueis:
+      - PPLZG8J3N9D4
+      - EGAVSJTA2D81  # Rockwell Collins
+  - ticker: GD
+    name: General Dynamics
+    parent_ueis:
+      - VF58HFRNGEL8
+      - FAZSFFE6CST9
+      - E7BEKJ4V9528  # Electric Boat
+      - Q85KVUK3JBF5  # NASSCO
+      - HAWKSQF848W7  # Land Systems
+  - ticker: NOC
+    name: Northrop Grumman
+    parent_ueis:
+      - NKVZLJL93QT6
+  - ticker: LDOS
+    name: Leidos
+    parent_ueis:
+      - ZL41ERXMPAR3
+      - MDSWM6MB1BH7
+      - FH7ML8E9EWJ7  # Dynetics
+  - ticker: HII
+    name: Huntington Ingalls Industries
+    parent_ueis:
+      - F9SDJAZFTLG6
+  - ticker: MCK
+    name: McKesson
+    parent_ueis:
+      - S1RUKWWRYFL6
+      - JTAPCFM4NSL4
+  - ticker: FLR
+    name: Fluor
+    parent_ueis:
+      - MFA3GM9L8X58
+  - ticker: LHX
+    name: L3Harris Technologies
+    parent_ueis:
+      - SJULQDJ8NZU7
+  - ticker: BAH
+    name: Booz Allen Hamilton
+    parent_ueis:
+      - MBPHTU7Y9S65
+  - ticker: AMTM
+    name: Amentum
+    parent_ueis:
+      - TU4KCXMM9AP6
+  - ticker: HUM
+    name: Humana
+    parent_ueis:
+      - ZE6ZM6NKSV43  # Humana Government Business
+  - ticker: CACI
+    name: CACI International
+    parent_ueis:
+      - QSRTXLFKV857
+  - ticker: SAIC
+    name: Science Applications International
+    parent_ueis:
+      - MMLKPW9JLX64
+  - ticker: COR
+    name: Cencora
+    parent_ueis:
+      - NWEGNLYTBDW4
+      - GTXTRMLFL9U7  # Cencora Global Consulting Services
+  - ticker: TXT
+    name: Textron
+    parent_ueis:
+      - HKUMGJBEMKN3
+  - ticker: MRK
+    name: Merck
+    parent_ueis:
+      - GYXFTAF6L3W4
+  - ticker: ORCL
+    name: Oracle
+    parent_ueis:
+      - ZFKQZW16QPU3  # Oracle Health Government Services
+  - ticker: HON
+    name: Honeywell
+    parent_ueis:
+      - JXSUJ4ALFHB4
+      - DMEGBYTVBQS5  # Honeywell Federal Manufacturing & Technologies
+  - ticker: PLTR
+    name: Palantir Technologies
+    parent_ueis:
+      - FSY4LVSBGWB7
+  - ticker: GE
+    name: GE Aerospace
+    parent_ueis:
+      - JRZ1WHXAKBM3
+      - J1T1FEN3PWX6
+  - ticker: GEO
+    name: GEO Group
+    parent_ueis:
+      - JMLKZZ1NL2Z6
+  - ticker: VVX
+    name: V2X
+    parent_ueis:
+      - CG8SV4246V29
+      - NVC1EFKKYB93  # V2X Aerospace
+  - ticker: KBR
+    name: KBR
+    parent_ueis:
+      - VJ3XVZC76HT9
+      - TGPKTMN8YL31  # KBR Wyle Services
+  - ticker: RS
+    name: Reliance
+    parent_ueis:
+      - SYN6DWFYMVT7
+  - ticker: T
+    name: AT&T
+    parent_ueis:
+      - NT9TC1ZVV5N9
+  - ticker: PFE
+    name: Pfizer
+    parent_ueis:
+      - MHBQULRMEEJ5
+  - ticker: PSN
+    name: Parsons
+    parent_ueis:
+      - FFCMDLMXRK49
+  - ticker: OSK
+    name: Oshkosh
+    parent_ueis:
+      - GVX8NG7QE7W9
+  - ticker: TKR
+    name: Timken
+    parent_ueis:
+      - XBY5FEGMU441
+  - ticker: IBM
+    name: IBM
+    parent_ueis:
+      - J64CSQTQNRC1
+  - ticker: FDX
+    name: FedEx
+    parent_ueis:
+      - D8YCU3XSC4V5
+  - ticker: MMS
+    name: Maximus
+    parent_ueis:
+      - TREKW6J3QSF5  # Maximus Federal Services
+  - ticker: TPC
+    name: Tutor Perini
+    parent_ueis:
+      - HMY5AMAJFT95
+  - ticker: SNEX
+    name: StoneX Group
+    parent_ueis:
+      - ZRGFMMN3RXV8  # StoneX Financial Ltd

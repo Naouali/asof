@@ -11,7 +11,8 @@ from inside the United States; everywhere else gets HTTP 403 whatever the client
 So there are two ways in. ``direct`` talks to the Senate and works from a US
 address. The default reads a *mirror*: a daily job on a US-hosted runner
 (``.github/workflows/senate-mirror.yml``) runs the direct reader and commits what
-it saw, as JSON, to a branch of this project's own repository. The mirror holds
+it saw, as JSON, to a branch of the repository; the job names its address
+(``mirror_url`` in ``configs/ingest.yaml``). The mirror holds
 the cells of each report exactly as the page showed them; every interpretation
 below happens at ingest, so a parsing fix never needs the Senate asked again.
 
@@ -52,7 +53,6 @@ from quantlab.data.store import utcnow
 from quantlab.logging import get_logger
 
 __all__ = [
-    "MIRROR_URL",
     "Report",
     "ReportRef",
     "SenateDisclosureFilings",
@@ -70,8 +70,7 @@ HOME_URL = f"{BASE}/search/home/"
 SEARCH_URL = f"{BASE}/search/"
 DATA_URL = f"{BASE}/search/report/data/"
 
-#: Where the daily job publishes what it read. One file per filing year.
-MIRROR_URL = "https://raw.githubusercontent.com/Naouali/asof/senate-mirror/senate"
+#: One mirror file per filing year, under the job's `mirror_url`.
 MIRROR_FILE = "ptr-{year}.json"
 
 CHAMBER = "senate"
@@ -430,11 +429,13 @@ class _SenateSource(Source):
     spec: ClassVar = get_source("senate_efd")
 
     def __init__(
-        self, *, direct: bool = False, mirror_url: str = MIRROR_URL, **kwargs: Any
+        self, *, direct: bool = False, mirror_url: str | None = None, **kwargs: Any
     ) -> None:
         super().__init__(**kwargs)
         self.direct = direct
-        self.mirror_url = mirror_url.rstrip("/")
+        # Where the mirror is published is the job's to say (configs/ingest.yaml):
+        # it names a repository, and a fork's is not this one.
+        self.mirror_url = mirror_url.rstrip("/") if mirror_url else None
 
     def _reports(
         self, start: dt.datetime, end: dt.datetime, *, read: bool
@@ -461,6 +462,13 @@ class _SenateSource(Source):
     def _mirrored(
         self, start: dt.datetime, horizon: dt.datetime
     ) -> Iterator[tuple[ReportRef, Report]]:
+        if self.mirror_url is None:
+            raise SourceError(
+                self.name,
+                "no `mirror_url` is set for this job. The Senate's site answers only from "
+                "inside the United States, so the job must say where its mirror is "
+                "published (see configs/ingest.yaml), or set `direct: true` on a US machine.",
+            )
         for year in range(start.year, horizon.year + 1):
             url = f"{self.mirror_url}/{MIRROR_FILE.format(year=year)}"
             try:

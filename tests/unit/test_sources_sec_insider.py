@@ -267,3 +267,25 @@ def test_older_index_pages_are_read_and_pages_before_the_window_are_not(
     assert "0001140361-26-030000" in frame["accession"].to_list()
     assert any("submissions-001.json" in url for url in requested)
     assert not any("submissions-002.json" in url for url in requested)
+
+
+def test_forms_a_company_filed_as_an_owner_of_another_issuer_are_dropped(
+    settings: Settings,
+) -> None:
+    """A company's filing index also lists what it filed as a SHAREHOLDER: Alphabet
+    reporting its trades in a start-up it backs. The real lake held 68 such rows,
+    shown as insider trades in the company that merely owned the stock."""
+    routes = _routes()
+    other = load_fixture("sec_form4_aapl.xml").replace(
+        "<issuerCik>0000320193</issuerCik>", "<issuerCik>0001999999</issuerCik>"
+    )
+    assert other != load_fixture("sec_form4_aapl.xml")
+    accessions = [key for key in routes if key.isdigit()]
+    routes[accessions[0]] = other.replace("2026-09-15", "2026-08-03")
+
+    source, _ = routed_source(InsiderTransactions, routes, settings)
+    mixed = source.fetch(["AAPL"], START, END)
+    clean, _ = _fetch(settings)
+
+    assert set(mixed["issuer_cik"].to_list()) == {320193}
+    assert 0 < mixed.height < clean.height

@@ -2,17 +2,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Mark } from "../components/Mark";
 import { PriceChart } from "../components/PriceChart";
-import type { DataHealth, DisclosureEvent, FeedResponse, TickerResponse } from "../lib/api";
+import type { DataHealth, DisclosureEvent, FeedResponse, PortfolioMembers, PortfolioResponse, TickerResponse, TradedResponse } from "../lib/api";
 import { addDays, daysBetween, plural, shortDay } from "../lib/format";
-import { useApi } from "../lib/hooks";
+import { useApi, useRules, useTitle } from "../lib/hooks";
 
 const WINDOW_DAYS = 120;
 const TIMELINE_ROWS = 36;
 /** A small panel cannot carry a year of marks. It shows the latest few, and says so. */
 const CHART_MARKS = 12;
 const HOLDINGS = 6;
-/** Tickers the lake is most likely to hold prices for, in order of preference. */
-const CHART_TICKERS = ["NVDA", "AAPL", "MSFT"];
 
 /** The SEC stores manager names in capitals. A sentence on this page does not. */
 function readable(name: string): string {
@@ -164,29 +162,6 @@ interface Holding {
   weight: number;
 }
 
-/** The low end of a disclosed range: "$15,001 to $50,000" is at least 15,001. */
-function floorOf(size: string): number {
-  const match = /\$([\d,]+)/.exec(size);
-  return match?.[1] ? Number(match[1].replaceAll(",", "")) : 0;
-}
-
-/**
- * A member's portfolio, as far as their reports allow it to be known: purchases
- * less sales per ticker, each counted at the BOTTOM of its disclosed range, because
- * the bottom is the only figure the member actually vouched for.
- */
-function estimate(events: DisclosureEvent[]): Holding[] {
-  const net = new Map<string, number>();
-  for (const event of events) {
-    if (event.kind !== "congress" || !event.ticker || event.direction === "none") continue;
-    const signed = floorOf(event.size) * (event.direction === "buy" ? 1 : -1);
-    net.set(event.ticker, (net.get(event.ticker) ?? 0) + signed);
-  }
-  const held = [...net.entries()].filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1]).slice(0, HOLDINGS);
-  const total = held.reduce((sum, [, value]) => sum + value, 0) || 1;
-  return held.map(([ticker, value]) => ({ ticker, weight: (value / total) * 100 }));
-}
-
 /** Move one weight and share the difference among the others, so the total stays 100. */
 function reweigh(holdings: Holding[], ticker: string, weight: number): Holding[] {
   const others = holdings.filter((holding) => holding.ticker !== ticker);
@@ -198,8 +173,14 @@ function reweigh(holdings: Holding[], ticker: string, weight: number): Holding[]
   });
 }
 
-function ClonePanel({ member, trades }: { member: { name: string; role: string | null }; trades: DisclosureEvent[] }) {
-  const original = useMemo(() => estimate(trades), [trades]);
+function ClonePanel({ portfolio }: { portfolio: PortfolioResponse }) {
+  const rules = useRules();
+  // The largest holdings of the portfolio the Portfolios page compiles, brought to 100%.
+  const original = useMemo(() => {
+    const top = portfolio.holdings.slice(0, HOLDINGS);
+    const total = top.reduce((sum, holding) => sum + holding.weight_pct, 0) || 1;
+    return top.map((holding) => ({ ticker: holding.ticker, weight: (holding.weight_pct / total) * 100 }));
+  }, [portfolio]);
   const [holdings, setHoldings] = useState<Holding[]>(original);
   useEffect(() => setHoldings(original), [original]);
   const changed = holdings.some((holding, index) => Math.abs(holding.weight - (original[index]?.weight ?? 0)) > 0.5);
@@ -207,7 +188,7 @@ function ClonePanel({ member, trades }: { member: { name: string; role: string |
   return (
     <section className="lp-panel lp-clone" aria-label="Clone a portfolio">
       <h2 className="lp-panel__title">
-        Clone <em>{member.name}</em>'s portfolio, then make it yours.
+        Clone <em>{portfolio.actor}</em>'s portfolio, then make it yours.
       </h2>
       <ul className="lp-clone__list">
         {holdings.map((holding) => (
@@ -239,8 +220,7 @@ function ClonePanel({ member, trades }: { member: { name: string; role: string |
         )}
       </div>
       <p className="lp-caption">
-        Weights are estimated from the ranges members disclose, counted at the bottom of each range, over {plural(trades.length, "trade")} in the last year. A trade appears when it is reported, up to 45 days after it
-        happens.
+        Weights are estimated from the ranges members disclose, counted at the middle of each range, over {plural(portfolio.trades, "trade")}. A trade appears when it is reported{rules && `, up to ${rules.deadlines.congress_days} days after it happens`}.
       </p>
     </section>
   );
@@ -252,29 +232,25 @@ export function LandingPage() {
   const feed = useApi<FeedResponse>("/api/feed", { days: WINDOW_DAYS });
   const lake = useApi<DataHealth>("/api/data", {});
 
-  // The chart shows the first preferred ticker the lake can actually draw.
+  // The chart shows the most-traded ticker the lake can actually draw: the ranking
+  // comes from the disclosures themselves, and the first one with prices wins.
+  const ranking = useApi<TradedResponse>("/api/analytics/traded", { days: 365 });
+  const candidates = ranking.data?.tickers ?? [];
   const [attempt, setAttempt] = useState(0);
-  const ticker = useApi<TickerResponse>(`/api/tickers/${CHART_TICKERS[attempt] ?? CHART_TICKERS[0]}`, {});
+  const ticker = useApi<TickerResponse>(candidates[attempt] ? `/api/tickers/${encodeURIComponent(candidates[attempt].ticker)}` : null, {});
   useEffect(() => {
-    if (ticker.data && ticker.data.prices.length < 2 && attempt < CHART_TICKERS.length - 1) setAttempt((value) => value + 1);
-  }, [ticker.data, attempt]);
+    if (ticker.data && ticker.data.prices.length < 2 && attempt < candidates.length - 1) setAttempt((value) => value + 1);
+  }, [ticker.data, attempt, candidates.length]);
 
-  // The member with the most distinct purchases lately: the fullest portfolio to show.
-  const member = useMemo(() => {
-    const bought = new Map<string, { name: string; role: string | null; tickers: Set<string> }>();
-    for (const event of feed.data?.groups.flatMap((group) => group.events) ?? []) {
-      if (event.kind !== "congress" || event.direction !== "buy" || !event.ticker) continue;
-      const entry = bought.get(event.actor_id) ?? { name: event.actor, role: event.role, tickers: new Set<string>() };
-      entry.tickers.add(event.ticker);
-      bought.set(event.actor_id, entry);
-    }
-    const [best] = [...bought.entries()].sort((a, b) => b[1].tickers.size - a[1].tickers.size);
-    return best ? { id: best[0], name: best[1].name, role: best[1].role } : null;
-  }, [feed.data]);
-  const record = useApi<FeedResponse>(member ? "/api/feed" : null, { actor: member?.id, days: 365 });
-  const trades = useMemo(() => record.data?.groups.flatMap((group) => group.events) ?? [], [record.data]);
+  // The member who has traded the most tickers: the fullest portfolio to show. Both
+  // the choice and the portfolio come from the API the Portfolios page uses.
+  useTitle(null);
+  const members = useApi<PortfolioMembers>("/api/portfolios", {});
+  const fullest = members.data?.members[0] ?? null;
+  const portfolio = useApi<PortfolioResponse>(fullest ? "/api/portfolio" : null, { actor: fullest?.actor_id });
 
-  const rows = (dataset: string) => lake.data?.datasets.find((set) => set.dataset === dataset)?.rows ?? 0;
+  // A dataset can have several sources -- the House and the Senate both file into congress_trades.
+  const rows = (dataset: string) => (lake.data?.datasets ?? []).filter((set) => set.dataset === dataset).reduce((total, set) => total + set.rows, 0);
   const ready = feed.data && !feed.data.empty_lake;
 
   return (
@@ -313,7 +289,11 @@ export function LandingPage() {
       <main className="lp-panels">
         {ready && feed.data ? <TradesPanel feed={feed.data} /> : <Waiting label="Detected trades" empty={Boolean(feed.data?.empty_lake)} />}
         {ticker.data && ticker.data.prices.length > 1 ? <ChartPanel ticker={ticker.data} /> : <Waiting label="Price and disclosures" empty={Boolean(ticker.data)} />}
-        {member && trades.length > 0 ? <ClonePanel member={member} trades={trades} /> : <Waiting label="Clone a portfolio" empty={Boolean(feed.data && !member)} />}
+        {portfolio.data && portfolio.data.holdings.length > 0 ? (
+          <ClonePanel portfolio={portfolio.data} />
+        ) : (
+          <Waiting label="Clone a portfolio" empty={Boolean(members.data && !fullest)} />
+        )}
       </main>
     </div>
   );

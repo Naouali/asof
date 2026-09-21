@@ -145,7 +145,7 @@ class TickerResponse(BaseModel):
 
 
 class SearchHit(BaseModel):
-    kind: Literal["ticker", "person", "fund"]
+    kind: Literal["ticker", "person", "fund", "portfolio", "agency"]
     key: str
     label: str
     note: str | None
@@ -176,3 +176,252 @@ class Health(BaseModel):
     #: than the browser's clock, because the server is the one that read the lake.
     today: dt.date
     authentication: Literal["none"]
+
+
+# -------------------------------------------------------------------- portfolios --
+class PortfolioMember(BaseModel):
+    actor_id: str
+    actor: str
+    role: str | None
+    chamber: str
+    trades: int
+    tickers: int
+    last_disclosed: dt.date | None
+
+
+class PortfolioMembers(BaseModel):
+    as_of: dt.datetime
+    today: dt.date
+    members: list[PortfolioMember]
+
+
+class Holding(BaseModel):
+    """What a member has bought and kept in one ticker. `mid_usd` nets the
+    midpoints of the disclosed ranges; `low_usd` and `high_usd` are the least and
+    the most the same trades allow."""
+
+    ticker: str
+    asset: str | None
+    weight_pct: float
+    mid_usd: float
+    low_usd: float
+    high_usd: float
+    purchases: int
+    sales: int
+    first_bought: dt.date
+    last_trade: dt.date | None
+    accounts: list[str]
+    #: Null where the lake holds no prices for the ticker.
+    return_since_bought_pct: float | None
+    #: From the day the purchase became public: the return a follower could have had.
+    return_since_public_pct: float | None
+
+
+class SoldPosition(BaseModel):
+    ticker: str
+    asset: str | None
+    #: Exit price over entry price. Null without prices, or if shares are still held.
+    return_pct: float | None = None
+    sold_low_usd: float
+    sold_high_usd: float
+    last_trade: dt.date | None
+
+
+class PerformancePoint(BaseModel):
+    date: dt.date
+    member_pct: float
+    #: The same trades made on the days they became public. Null before the first one.
+    follower_pct: float | None
+
+
+class Performance(BaseModel):
+    """The portfolio's return over time: closed trades at their exit over their entry
+    price, open ones marked to each day's close, over everything put in so far."""
+
+    points: list[PerformancePoint]
+    member_pct: float
+    follower_pct: float | None
+    #: Purchases that took part, and the tickers they were in: only priced ones can.
+    purchases: int
+    tickers: int
+
+
+class LeftOut(BaseModel):
+    options: int
+    exchanges: int
+    no_ticker: int
+
+
+class PortfolioReturns(BaseModel):
+    since_bought_pct: float
+    since_public_pct: float
+
+
+class PortfolioResponse(BaseModel):
+    as_of: dt.datetime
+    today: dt.date
+    actor_id: str
+    actor: str
+    role: str | None
+    chamber: str
+    #: The day the first report the lake holds for this chamber became public.
+    since: dt.date | None
+    trades: int
+    mid_usd: float
+    low_usd: float
+    high_usd: float
+    holdings: list[Holding]
+    #: Bought and then sold again, in full or more.
+    closed: list[SoldPosition]
+    #: Sold without ever being seen bought: held from before the record begins.
+    held_before: list[SoldPosition]
+    left_out: LeftOut
+    #: Null when fewer than two days of priced trades exist.
+    performance: Performance | None
+    priced_share: float
+    #: Null unless enough of the portfolio has prices for a figure to mean anything.
+    returns: PortfolioReturns | None
+
+
+# ------------------------------------------------------------------------- rules --
+class DeadlineRules(BaseModel):
+    congress_days: int
+    fund_days: int
+    insider_business_days: int
+
+
+class ContractRules(BaseModel):
+    #: The smallest action the ingest keeps, from the ingest plan.
+    min_action_usd: float
+    #: The smallest action the feed shows.
+    feed_min_usd: float
+    publication_lag_days: int
+    defense_embargo_days: int
+    #: Companies in configs/contractors.yaml. Null if that file cannot be read.
+    companies: int | None
+    listed_per_ticker: int
+    on_chart: int
+
+
+class FeedRules(BaseModel):
+    fund_changes_per_filing: int
+    fund_min_change_pct: int
+
+
+class AnalyticsRules(BaseModel):
+    min_sample: int
+    max_lag_days: int
+
+
+class PortfolioRules(BaseModel):
+    #: Share of a portfolio that must have prices before an overall return is given.
+    min_priced_share_pct: int
+
+
+class Rules(BaseModel):
+    """Every threshold the app applies, so the interface prints them, never repeats them."""
+
+    deadlines: DeadlineRules
+    contracts: ContractRules
+    feed: FeedRules
+    analytics: AnalyticsRules
+    portfolios: PortfolioRules
+
+
+# --------------------------------------------------------------------- analytics --
+class TradedTicker(BaseModel):
+    ticker: str
+    name: str | None
+    #: Distinct filers, not trades and not dollars: the one count every source supports.
+    buyers: int
+    sellers: int
+
+
+class TradedPerson(BaseModel):
+    actor_id: str
+    actor: str
+    role: str | None
+    kind: Literal["insider", "congress"]
+    buys: int
+    sells: int
+    tickers: int
+
+
+class TradedResponse(BaseModel):
+    as_of: dt.datetime
+    today: dt.date
+    days: int
+    kind: str | None
+    trades: int
+    tickers_total: int
+    tickers: list[TradedTicker]
+    people: list[TradedPerson]
+
+
+class Spread(BaseModel):
+    """Percent price moves between the trade and its disclosure. The percentiles
+    are null under five trades: a median of three is an anecdote."""
+
+    n: int
+    median: float | None
+    p10: float | None
+    p25: float | None
+    p75: float | None
+    p90: float | None
+
+
+class MoveGroup(BaseModel):
+    key: Literal["insider", "house", "senate", "fund"]
+    label: str
+    buy: Spread
+    sell: Spread
+
+
+class PriceMovesResponse(BaseModel):
+    as_of: dt.datetime
+    today: dt.date
+    days: int
+    trades: int
+    #: How many of them name a ticker the lake holds prices for.
+    measured: int
+    priced_tickers: int
+    groups: list[MoveGroup]
+    #: The moves a reader of the disclosure had missed by the most.
+    examples: list[EventModel]
+
+
+class ContractTotal(BaseModel):
+    name: str
+    net_usd: float
+    defense_usd: float
+    actions: int
+
+
+class ContractMonth(BaseModel):
+    month: dt.date
+    committed_usd: float
+    taken_back_usd: float
+
+
+class HiddenContracts(BaseModel):
+    actions: int
+    net_usd: float
+    defense_actions: int
+
+
+class ContractsResponse(BaseModel):
+    """Contract actions made public in the year to the as-of date. Net figures are
+    money committed less money taken back, spent over years: not revenue."""
+
+    as_of: dt.datetime
+    today: dt.date
+    is_live: bool
+    actions: int
+    net_usd: float
+    defense_usd: float
+    companies: list[ContractTotal]
+    agencies: list[ContractTotal]
+    months: list[ContractMonth]
+    #: Signed by the as-of date and not public yet. Null when looking at today,
+    #: because only a later date can know it.
+    hidden: HiddenContracts | None

@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import zipfile
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -21,10 +22,10 @@ from tests.conftest import load_fixture
 from quantlab.config import Settings
 from quantlab.data.http import HttpClient, RateLimiter, SourceError
 from quantlab.data.sources.usaspending import (
-    CONTRACTORS,
     DOWNLOAD_URL,
     ContractActions,
     known_at,
+    load_contractors,
     parse_transactions,
 )
 
@@ -210,8 +211,62 @@ def test_a_download_that_never_finishes_gives_up(settings: Settings) -> None:
 
 
 # ------------------------------------------------------------------------ map --
-def test_no_parent_identifier_is_claimed_by_two_tickers() -> None:
-    claimed = [uei for contractor in CONTRACTORS for uei in contractor.parent_ueis]
+def test_the_shipped_list_loads_and_no_identifier_is_claimed_twice(repo_root: Path) -> None:
+    contractors = load_contractors(repo_root / "configs" / "contractors.yaml")
+
+    claimed = [uei for contractor in contractors for uei in contractor.parent_ueis]
+    assert len(contractors) >= 30
     assert len(claimed) == len(set(claimed))
-    assert all(len(uei) == 12 and uei.isalnum() and uei.isupper() for uei in claimed)
-    assert len({contractor.ticker for contractor in CONTRACTORS}) == len(CONTRACTORS)
+    assert {"LMT", "GD", "PLTR"} <= {contractor.ticker for contractor in contractors}
+
+
+def _list(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "contractors.yaml"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_an_identifier_claimed_by_two_companies_is_refused(tmp_path: Path) -> None:
+    """It would file one company's contracts under another's ticker."""
+    body = (
+        "contractors:\n"
+        "  - {ticker: AAA, name: A, parent_ueis: [ZFN2JJXBLZT3]}\n"
+        "  - {ticker: BBB, name: B, parent_ueis: [ZFN2JJXBLZT3]}\n"
+    )
+    with pytest.raises(SourceError, match="claimed by both AAA and BBB"):
+        load_contractors(_list(tmp_path, body))
+
+
+@pytest.mark.parametrize(
+    ("body", "complaint"),
+    [
+        ("contractors: []\n", "lists no contractors"),
+        (
+            "contractors:\n  - {ticker: AAA, name: A, parent_ueis: [SHORT]}\n",
+            "not a 12-character UEI",
+        ),
+        ("contractors:\n  - {ticker: AAA, name: A}\n", "lacks ticker, name or parent_ueis"),
+        (
+            "contractors:\n  - {ticker: AAA, name: A, parent_ueis: []}\n",
+            "lists no parent identifier",
+        ),
+        ("contractors: [\n", "not valid YAML"),
+    ],
+)
+def test_a_malformed_list_is_refused_with_the_reason(
+    tmp_path: Path, body: str, complaint: str
+) -> None:
+    with pytest.raises(SourceError, match=complaint):
+        load_contractors(_list(tmp_path, body))
+
+
+def test_without_the_list_nothing_can_be_fetched(settings: Settings, tmp_path: Path) -> None:
+    fetcher = Treasury().fetcher(settings, contractors=tmp_path / "missing.yaml")
+    with pytest.raises(SourceError, match="the only link between the two"):
+        fetcher.fetch(["LMT"], START, END)
+
+
+def test_a_job_can_point_at_a_list_of_its_own(settings: Settings, tmp_path: Path) -> None:
+    body = "contractors:\n  - {ticker: LOCK, name: Renamed, parent_ueis: [ZFN2JJXBLZT3]}\n"
+    found = Treasury().fetcher(settings, contractors=_list(tmp_path, body)).fetch([], START, END)
+    assert set(found["symbol"].to_list()) == {"LOCK"}

@@ -672,6 +672,36 @@ def test_the_feed_carries_large_contracts_and_the_ticker_page_all_of_them(
     assert "99% of it from the Pentagon, which publishes 90 days late." in page["brief"][-1]
 
 
+def test_search_finds_a_members_portfolio_and_the_agencies_that_sign_contracts(
+    contractor: TestClient,
+) -> None:
+    def kinds(query: str) -> set[tuple[str, str]]:
+        found = contractor.get("/api/search", params={"q": query, "as_of": "2026-09-18"}).json()
+        return {(hit["kind"], hit["label"]) for hit in found}
+
+    # A member has two pages: their trades, and what those add up to.
+    assert kinds("villareal") == {
+        ("person", "Rep. Tom Villareal"),
+        ("portfolio", "Rep. Tom Villareal"),
+    }
+    assert ("agency", "Dept of the Air Force") in kinds("air force")
+    assert ("agency", "Department of Defense") in kinds("defense")
+
+
+def test_a_department_has_a_page_made_of_its_offices_contracts(contractor: TestClient) -> None:
+    page = contractor.get(
+        "/api/feed",
+        params={"as_of": "2026-09-18", "days": 30, "actor": "agency:department of defense"},
+    ).json()
+
+    assert page["actor"] == {
+        "id": "agency:department of defense",
+        "name": "Department of Defense",
+        "role": "Federal department",
+    }
+    assert [event["actor"] for event in _events(page)] == ["Dept of the Air Force"]
+
+
 def test_an_embargoed_award_is_behind_the_curtain_and_counted_apart(
     contractor: TestClient,
 ) -> None:
@@ -685,6 +715,37 @@ def test_an_embargoed_award_is_behind_the_curtain_and_counted_apart(
         contractor.get("/api/tickers/OSPR", params={"as_of": "2026-08-01"}).json()["contracts"]
         is None
     )
+
+
+def test_the_app_publishes_the_numbers_it_runs_on(client: TestClient, repo_root: Path) -> None:
+    """The interface prints these and types none of them, so they must all be here,
+    and they must be the numbers the code and the configuration actually hold."""
+    import yaml
+
+    from quantlab.api import analytics, events, queries
+    from quantlab.data.sources import usaspending
+
+    rules = client.get("/api/rules").json()
+    plan = yaml.safe_load((repo_root / "configs" / "ingest.yaml").read_text())
+    job = next(j for j in plan["jobs"] if j["fetcher"] == "usaspending.government_contracts")
+    listed = yaml.safe_load((repo_root / "configs" / "contractors.yaml").read_text())
+
+    assert rules["contracts"]["min_action_usd"] == job["options"]["min_obligation"]
+    assert rules["contracts"]["companies"] == len(listed["contractors"])
+    assert rules["contracts"]["feed_min_usd"] == queries.FEED_CONTRACT_MIN_USD
+    assert rules["contracts"]["defense_embargo_days"] == usaspending.DEFENSE_EMBARGO.days
+    assert rules["deadlines"]["congress_days"] == events.CONGRESS_DEADLINE_DAYS
+    assert rules["deadlines"]["fund_days"] == events.FUND_DEADLINE_DAYS
+    assert rules["analytics"]["min_sample"] == analytics.MIN_SAMPLE
+
+
+def test_a_sentence_about_the_embargo_uses_the_embargo(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Change the rule and the words change with it: nothing repeats the number."""
+    from quantlab.api import events
+
+    monkeypatch.setattr(events, "DEFENSE_EMBARGO", dt.timedelta(days=120))
+    (event,) = contract_events(frame("government_contracts", "usaspending", [contract_line()]))
+    assert event.detail is not None and "120 days late" in event.detail
 
 
 def test_an_empty_lake_is_an_empty_feed_with_a_way_forward(

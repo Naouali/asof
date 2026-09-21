@@ -916,9 +916,9 @@ _DISCLOSURES: tuple[SourceSpec, ...] = (
             "The timely defence signal is NOT here. The Pentagon announces contracts "
             "over $7.5 million each afternoon on its own site, which is what moves a "
             "stock; that page is not fetched.",
-            "`symbol` comes from a curated map of parent-company identifiers to "
-            "tickers, not from the data: about forty listed US contractors. A company "
-            "outside the map is absent, not idle. Joint ventures are left out because "
+            "`symbol` comes from `configs/contractors.yaml`, a curated list of parent-"
+            "company identifiers and their tickers, not from the data. A company "
+            "outside that list is absent, not idle. Joint ventures are left out because "
             "they belong to no single ticker, and foreign-listed parents because their "
             "US tickers are depositary receipts. The government's own parent records "
             "lag acquisitions by months or years.",

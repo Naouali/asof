@@ -39,6 +39,7 @@ END = dt.datetime(2026, 9, 20, tzinfo=dt.UTC)
 ARMSTRONG = "b999bc0e-3eb0-4ca9-ab07-8e8f2e04b41f"
 BOOZMAN_AMENDMENT = "51455bcd-4966-4e77-b481-09897ada81ae"
 BLUMENTHAL_PAPER = "929216d5-5dbd-429c-858c-1e9332924627"
+MIRROR = "https://mirror.test/senate"
 
 HOME = '<form><input type="hidden" name="csrfmiddlewaretoken" value="home-token"></form>'
 SEARCH = '<form><input type="hidden" name="csrfmiddlewaretoken" value="search-token"></form>'
@@ -157,7 +158,7 @@ def test_reading_directly_yields_the_same_rows_as_the_mirror(
 ) -> None:
     direct = SenateTrades(client=Senate().client(settings), settings=settings, direct=True)
     mirrored, _ = routed_source(
-        SenateTrades, {"ptr-2026.json": _mirror(tmp_path, settings)}, settings
+        SenateTrades, {"ptr-2026.json": _mirror(tmp_path, settings)}, settings, mirror_url=MIRROR
     )
 
     columns = ["symbol", "doc_id", "line", "as_of", "known_at", "transaction_type", "amount_min"]
@@ -193,13 +194,22 @@ def test_the_mirror_never_asks_for_a_report_twice(settings: Settings, tmp_path: 
 
 
 def test_a_year_the_mirror_does_not_hold_is_an_error_not_an_empty_year(settings: Settings) -> None:
-    fetcher, _ = routed_source(SenateTrades, {}, settings)
+    fetcher, _ = routed_source(SenateTrades, {}, settings, mirror_url=MIRROR)
     with pytest.raises(SourceError, match="the mirror has no file for 2026"):
         fetcher.fetch([], START, END)
 
 
+def test_a_job_that_names_no_mirror_says_so(settings: Settings) -> None:
+    fetcher, requested = routed_source(SenateTrades, {}, settings)
+    with pytest.raises(SourceError, match="no `mirror_url` is set"):
+        fetcher.fetch([], START, END)
+    assert requested == []
+
+
 def test_a_file_that_is_not_a_mirror_is_refused(settings: Settings) -> None:
-    fetcher, _ = routed_source(SenateTrades, {"ptr-2026.json": {"filings": []}}, settings)
+    fetcher, _ = routed_source(
+        SenateTrades, {"ptr-2026.json": {"filings": []}}, settings, mirror_url=MIRROR
+    )
     with pytest.raises(SourceError, match="not a mirror file"):
         fetcher.fetch([], START, END)
 
@@ -208,7 +218,7 @@ def test_a_file_that_is_not_a_mirror_is_refused(settings: Settings) -> None:
 @pytest.fixture
 def trades(settings: Settings, tmp_path: Path) -> pl.DataFrame:
     fetcher, _ = routed_source(
-        SenateTrades, {"ptr-2026.json": _mirror(tmp_path, settings)}, settings
+        SenateTrades, {"ptr-2026.json": _mirror(tmp_path, settings)}, settings, mirror_url=MIRROR
     )
     return fetcher.fetch([], START, END)
 
@@ -248,8 +258,12 @@ def test_an_amendment_is_marked_as_one(trades: pl.DataFrame) -> None:
 
 def test_a_paper_report_is_listed_and_yields_no_trades(settings: Settings, tmp_path: Path) -> None:
     mirror = {"ptr-2026.json": _mirror(tmp_path, settings)}
-    trades = routed_source(SenateTrades, mirror, settings)[0].fetch([], START, END)
-    filings = routed_source(SenateDisclosureFilings, mirror, settings)[0].fetch([], START, END)
+    trades = routed_source(SenateTrades, mirror, settings, mirror_url=MIRROR)[0].fetch(
+        [], START, END
+    )
+    filings = routed_source(SenateDisclosureFilings, mirror, settings, mirror_url=MIRROR)[0].fetch(
+        [], START, END
+    )
 
     assert BLUMENTHAL_PAPER not in trades["doc_id"].to_list()
     assert sorted(filings["doc_id"].to_list()) == sorted(
@@ -263,7 +277,7 @@ def test_a_paper_report_is_listed_and_yields_no_trades(settings: Settings, tmp_p
 
 def test_nothing_filed_after_the_window_is_returned(settings: Settings, tmp_path: Path) -> None:
     fetcher, _ = routed_source(
-        SenateTrades, {"ptr-2026.json": _mirror(tmp_path, settings)}, settings
+        SenateTrades, {"ptr-2026.json": _mirror(tmp_path, settings)}, settings, mirror_url=MIRROR
     )
     early = fetcher.fetch([], START, dt.datetime(2026, 9, 1, tzinfo=dt.UTC))
     assert set(early["doc_id"].to_list()) == {BOOZMAN_AMENDMENT}
@@ -274,6 +288,6 @@ def test_an_unknown_transaction_type_is_refused_not_guessed(
 ) -> None:
     mirror = _mirror(tmp_path, settings)
     mirror["reports"][-1]["rows"][0]["type"] = "Gift"
-    fetcher, _ = routed_source(SenateTrades, {"ptr-2026.json": mirror}, settings)
+    fetcher, _ = routed_source(SenateTrades, {"ptr-2026.json": mirror}, settings, mirror_url=MIRROR)
     with pytest.raises(SourceError, match="unknown transaction type 'Gift'"):
         fetcher.fetch([], START, END)

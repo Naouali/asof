@@ -185,8 +185,9 @@ class InsiderTransactions(Source):
 
         rows: list[dict[str, Any]] = []
         for ticker in tickers:
-            index = Submissions(self.client, self.name, self.cik_for(ticker))
-            filings = not_xml = impossible = 0
+            cik = self.cik_for(ticker)
+            index = Submissions(self.client, self.name, cik)
+            filings = not_xml = impossible = as_owner = 0
             for filing in index.filings(OWNERSHIP_FORMS, start, end):
                 filings += 1
                 document = filing.raw_primary_document
@@ -194,7 +195,12 @@ class InsiderTransactions(Source):
                     not_xml += 1  # pre-2003 paper-era filing, carried as text
                     continue
                 kept, dropped = self._rows_for(ticker, filing, document)
-                rows.extend(kept)
+                # A company's filing index also lists the forms it filed as an OWNER
+                # of somebody else's stock: Alphabet reporting its trades in a company
+                # it backs. Those are not insider trades in Alphabet.
+                ours = [row for row in kept if row["issuer_cik"] == cik]
+                as_owner += len(kept) - len(ours)
+                rows.extend(ours)
                 impossible += dropped
             log.info(
                 "insider.issuer",
@@ -202,6 +208,7 @@ class InsiderTransactions(Source):
                 filings=filings,
                 skipped_not_xml=not_xml,
                 dropped_dated_after_filing=impossible,
+                dropped_filed_as_owner_of_another_issuer=as_owner,
             )
         # No rows is a legitimate answer: a narrow window in which no insider of
         # these issuers filed. Failure would have raised above.

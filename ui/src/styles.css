@@ -2268,3 +2268,1006 @@ li:first-child > .item {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- analytics --
+   Three tabs, each one screen. The charts are rows of text with a bar beside
+   them, so every number is also readable as a number. */
+.analytics__body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1500px;
+  padding: 22px 28px 36px;
+  transition: opacity 120ms;
+}
+
+.analytics__body--stale {
+  opacity: 0.55;
+}
+
+.analytics__lead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px 28px;
+}
+
+.analytics__lead .brief {
+  max-width: 46ch;
+}
+
+.analytics__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.analytics__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.analytics__grid--money {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+}
+
+.analytics__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.analytics .panel .note {
+  max-width: 78ch;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+/* Buyers and sellers, back to back from a centre line. */
+.sides__head,
+.sides__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 2px;
+}
+
+.sides__head {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.sides__label {
+  padding-left: 8px;
+}
+
+.sides__label--sell {
+  padding: 0 8px 0 0;
+  text-align: right;
+}
+
+.sides__row {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  color: inherit;
+  text-decoration: none;
+}
+
+.sides__row:hover {
+  background: var(--panel-hover);
+}
+
+.sides__ticker {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding-right: 10px;
+}
+
+.sides__ticker strong {
+  font-weight: 700;
+}
+
+.sides__ticker span {
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sides__half {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border-left: 1px solid var(--rule-strong);
+}
+
+.sides__half--sell {
+  justify-content: flex-end;
+  border-right: 1px solid var(--rule-strong);
+  border-left: 0;
+}
+
+.sides__bar {
+  height: 14px;
+  min-width: 0;
+}
+
+.sides__bar--buy {
+  border-radius: 0 4px 4px 0;
+  background: var(--buy);
+}
+
+/* Sold is an outline, as the marks are: the direction survives without colour. */
+.sides__bar--sell {
+  border: 2px solid var(--sell);
+  border-right: 0;
+  border-radius: 4px 0 0 4px;
+}
+
+.sides__bar[style*="width: 0%"] {
+  display: none;
+}
+
+.sides__count {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+/* Who disclosed the most. */
+.tally {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  list-style: none;
+}
+
+.tally li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tally a {
+  font-family: var(--serif);
+  font-size: 17px;
+}
+
+.tally__sub {
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.tally__bar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  min-width: 10px;
+  margin-top: 2px;
+}
+
+.tally__buy {
+  border-radius: 3px;
+  background: var(--buy);
+}
+
+.tally__sell {
+  border: 1.5px solid var(--sell);
+  border-radius: 3px;
+}
+
+/* Price moves: a box for each side of each group, on one shared scale. */
+.boxes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.boxes__scale {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 150px 0 64px;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.boxes__group h3 {
+  margin-bottom: 2px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.box {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 142px;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.box svg {
+  width: 100%;
+  height: 34px;
+}
+
+.box__side,
+.box__few {
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.box__few {
+  grid-column: 2 / 4;
+  color: var(--ink-faint);
+}
+
+.box__zero {
+  stroke: var(--rule-strong);
+  stroke-width: 1;
+}
+
+.box__value {
+  font-size: 13px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.box__value strong {
+  margin-right: 4px;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.missed {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.missed li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(150px, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.missed__what {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.missed__what > span:nth-child(2) {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.missed__what strong {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Contract totals: ink, because public money is neither bought nor sold. */
+.totals {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.totals li {
+  display: grid;
+  grid-template-columns: minmax(64px, 0.9fr) minmax(0, 2.2fr) 84px;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.totals__name {
+  overflow: hidden;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.totals__track {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+}
+
+.totals__bar {
+  height: 14px;
+  border-radius: 0 4px 4px 0;
+}
+
+.totals__bar--defense {
+  background: var(--ink);
+}
+
+.totals__bar--civilian {
+  background: var(--ink-faint);
+}
+
+.totals__value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.totals__key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.totals__key .totals__bar {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.totals__key .totals__bar--civilian {
+  margin-left: 12px;
+}
+
+.months {
+  width: 100%;
+  height: auto;
+}
+
+.months__zero {
+  stroke: var(--rule-strong);
+  stroke-width: 1;
+}
+
+.months__label {
+  fill: var(--ink-faint);
+  font-size: 12px;
+}
+
+@media (max-width: 1000px) {
+  .analytics__grid,
+  .analytics__grid--money {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analytics__body {
+    padding: 18px 16px 32px;
+  }
+
+  .boxes__scale {
+    margin: 0 150px 0 64px;
+  }
+}
+
+/* Names and tickers inside the analytics panels read as ink, as in the ledgers. */
+.tally a,
+.missed a,
+.totals a {
+  color: var(--ink);
+  text-decoration-color: var(--rule-strong);
+}
+
+.tally a:hover,
+.missed a:hover,
+.totals a:hover {
+  color: var(--mark);
+}
+
+/* Agency names are long; tickers are not. */
+.totals--wide li {
+  grid-template-columns: minmax(180px, 1.5fr) minmax(0, 1.6fr) 84px;
+}
+
+.months__value {
+  fill: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------- portfolios --
+   Master and detail, like the dashboard: members on the left, the compiled
+   portfolio on the right, each scrolling on its own so the page never does. */
+.folio {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  flex-grow: 1;
+  min-height: 0;
+}
+
+.folio__list,
+.folio__main {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.folio__list {
+  border-right: 1px solid var(--rule);
+}
+
+.folio__find {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: block;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--ground);
+}
+
+.folio__none {
+  padding: 16px 20px;
+}
+
+.item--member {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 58px;
+}
+
+.folio__main {
+  padding: 30px 40px 40px;
+}
+
+.folio__body {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  max-width: 1080px;
+  transition: opacity 120ms;
+}
+
+/* The record pane's header pieces, which expect a spaced column around them. */
+.folio__head {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.folio__head .record__headline {
+  max-width: 30ch;
+  font-size: 36px;
+}
+
+.folio__head .record__lede {
+  max-width: 78ch;
+}
+
+.folio__body--stale {
+  opacity: 0.55;
+}
+
+.folio__body h3 {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.folio__count {
+  margin-left: 6px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--ink-faint);
+}
+
+.folio__more {
+  margin-top: 12px;
+}
+
+.ledger--folio .ledger__head,
+.row--folio {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.4fr) minmax(140px, 1.5fr) minmax(120px, 1fr) 120px 130px;
+  align-items: center;
+  column-gap: 18px;
+}
+
+.row--folio {
+  padding: 9px 16px;
+}
+
+.weight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.weight__track {
+  flex-grow: 1;
+  height: 10px;
+  min-width: 0;
+}
+
+/* Ink, not blue: a holding is a fact about a position, not a purchase or a sale. */
+.weight__bar {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 0 4px 4px 0;
+  background: var(--ink);
+}
+
+.weight strong {
+  width: 52px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.folio__pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 26px 40px;
+}
+
+.sold {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.sold li {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.sold a {
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration-color: var(--rule-strong);
+}
+
+.sold a:hover {
+  color: var(--mark);
+}
+
+@media (max-width: 1000px) {
+  .folio {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .folio__list {
+    max-height: 38vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .folio__main {
+    padding: 22px 16px 32px;
+  }
+
+  .ledger--folio .ledger__head {
+    display: none;
+  }
+
+  .row--folio {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    row-gap: 6px;
+  }
+}
+
+/* The return chart: the member in ink, a follower in the app's "public" yellow. */
+.chart__zero {
+  stroke: var(--ink-faint);
+  stroke-width: 1.5;
+}
+
+.chart__line--follower {
+  stroke: var(--mark);
+  stroke-dasharray: 6 4;
+}
+
+.chart__endlabel {
+  fill: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Text stays in ink; the swatch beside the legend entry carries the colour. */
+.chart__endlabel--follower {
+  fill: var(--ink-soft);
+}
+
+.legend__line {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  border-top: 2px solid var(--ink);
+}
+
+.legend__line--follower {
+  border-top: 2px dashed var(--mark);
+}
+
+.folio__coverage {
+  margin-top: 12px;
+}
+
+.folio__coverage strong {
+  color: var(--ink-soft);
+}
+
+/* ===================================================================== small screens
+   One layer, at the end, so it wins. Three widths matter:
+     up to 1240px  a tablet held sideways: the dashboard loses its third column
+     up to 1100px  a tablet upright: the top bar wraps, the search gets its own row
+     up to 860px   a phone: one column, lists before detail, nothing wider than the screen
+   A chart never decides how wide its page is: it is clipped to its box, and the box
+   is measured, so the drawing follows the screen and not the other way round. */
+.chart {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.panel,
+.page__main,
+.folio__main,
+.folio__body,
+.analytics__body,
+.analytics__grid > *,
+.desk__record {
+  min-width: 0;
+}
+
+.tabs__tab,
+.asof__button,
+.pills button {
+  white-space: nowrap;
+}
+
+/* The way back from a record to the list: only a phone shows one at a time. */
+.desk__back {
+  display: none;
+}
+
+@media (max-width: 1240px) {
+  /* Rows take the height of what is in them. Left to shrink, the record and the
+     context pane were squeezed into the window's height and drawn over each other. */
+  .desk {
+    grid-template-rows: auto auto;
+    align-content: start;
+  }
+
+  .desk__record,
+  .desk__context {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 1100px) {
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding-block: 8px;
+  }
+
+  .tabs {
+    align-self: center;
+    min-height: 40px;
+  }
+
+  .search {
+    order: 5;
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .desk {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
+
+  .desk__record {
+    padding: 26px 24px;
+  }
+}
+
+@media (max-width: 860px) {
+  /* The dashboard shows its list. A record opens on its own when one is chosen. */
+  .desk {
+    flex-direction: column;
+  }
+
+  .desk__list {
+    border-top: 0;
+  }
+
+  .desk__record {
+    display: none;
+  }
+
+  .desk--chosen .desk__record {
+    display: block;
+  }
+
+  .desk--chosen .desk__list {
+    display: none;
+  }
+
+  .desk__back {
+    display: inline-flex;
+    margin-bottom: 18px;
+  }
+
+  .deskbar {
+    padding: 14px 16px;
+  }
+
+  .deskbar h1 {
+    font-size: 24px;
+  }
+
+  .deskbar__controls,
+  .analytics__controls {
+    width: 100%;
+  }
+
+  /* A row of choices wider than the screen scrolls sideways inside itself. */
+  .pills {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pills button {
+    flex-shrink: 0;
+  }
+
+  .item {
+    padding-inline: 16px;
+  }
+
+  .desk__day {
+    padding-inline: 16px;
+  }
+
+  .footnote {
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 16px;
+  }
+
+  .pastbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .tickerhead__symbol {
+    font-size: 40px;
+  }
+
+  .readout {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .legend {
+    gap: 6px 14px;
+    font-size: 12px;
+  }
+
+  .panel {
+    padding: 14px 14px 12px;
+  }
+
+  .panel__title {
+    font-size: 18px;
+  }
+
+  /* Portfolios: the members first, then the portfolio, each the full width. */
+  .folio__list {
+    max-height: 44vh;
+  }
+
+  .folio__head .record__headline {
+    font-size: 27px;
+  }
+
+  .row--folio {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 12px 14px;
+  }
+
+  .row--folio .weight {
+    grid-column: 1 / -1;
+  }
+
+  .row--folio .ledger__num {
+    text-align: left;
+  }
+
+  /* Analytics: the two sides of a ticker need every pixel, so its name goes above. */
+  .analytics__lead .brief {
+    font-size: 20px;
+  }
+
+  .sides__head,
+  .sides__row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .sides__head > :first-child,
+  .sides__ticker {
+    grid-column: 1 / -1;
+  }
+
+  .box {
+    grid-template-columns: 50px minmax(0, 1fr);
+  }
+
+  .box__value {
+    grid-column: 2;
+  }
+
+  .boxes__scale {
+    margin: 0 0 0 58px;
+  }
+
+  .missed li,
+  .totals li,
+  .totals--wide li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .missed li > :last-child,
+  .totals__track {
+    grid-column: 1 / -1;
+  }
+
+  .totals__track {
+    order: 3;
+  }
+}
+
+@media (max-width: 560px) {
+  /* A phone: the name and the date on one row, the four pages on the next. */
+  .topbar {
+    gap: 8px 12px;
+    padding-inline: 16px;
+  }
+
+  .topbar__spacer {
+    flex-grow: 1;
+  }
+
+  .tabs {
+    order: 4;
+    flex-basis: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-inline: -8px;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .asof__button {
+    height: 40px;
+    padding: 0 10px;
+  }
+
+  .asof__menu {
+    right: 0;
+    left: auto;
+    max-width: calc(100vw - 32px);
+  }
+}
+
+/* Fingers, not a mouse: anything tapped is at least 40px tall. */
+@media (pointer: coarse) {
+  .pills button,
+  .button,
+  .select select,
+  .search__input,
+  .tabs__tab {
+    min-height: 44px;
+  }
+
+  .check input {
+    width: 22px;
+    height: 22px;
+  }
+
+  .row__who a,
+  .tally a,
+  .sold a,
+  .missed a,
+  .totals a,
+  .context__more,
+  .crumb {
+    display: inline-block;
+    padding-block: 6px;
+  }
+}
+
+/* Stacked into one column, a page's blocks take the screen's width. Left to size
+   themselves they take their widest content's, and a chart is wider than a phone. */
+@media (max-width: 1240px) {
+  .page {
+    align-items: stretch;
+  }
+
+  .page__main,
+  .page__aside {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 1100px) {
+  /* The search and the date share the second row. */
+  .search {
+    flex: 1 1 260px;
+    width: auto;
+  }
+
+  .asof {
+    order: 6;
+  }
+}
+
+@media (max-width: 560px) {
+  .asof {
+    order: 0;
+  }
+
+  .search {
+    flex-basis: 100%;
+  }
+
+  .tabs {
+    gap: 0;
+  }
+
+  .tabs__tab {
+    padding: 0 9px;
+    font-size: 15px;
+  }
+
+  .brief {
+    font-size: 19px;
+  }
+}
+
+/* The spacer becomes a line break: the pages on the first row, then the search and
+   the date together on the second. A phone puts the date beside the name instead. */
+@media (max-width: 1100px) {
+  .topbar__spacer {
+    flex-basis: 100%;
+    height: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .topbar__spacer {
+    flex-basis: 0;
+    flex-grow: 1;
+  }
+}

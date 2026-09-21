@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
+import { DASHBOARD } from "../lib/links";
+
 import { stampDay } from "../lib/format";
 import { useAsOf } from "../lib/hooks";
 import { AsOfControl } from "./AsOfControl";
@@ -15,7 +17,7 @@ export function Shell({ today, children }: { today: string | null; children: Rea
         Skip to the content
       </a>
       <header className="topbar">
-        <NavLink className="brand" to={`/${search}`}>
+        <NavLink className="brand" to={`${DASHBOARD}${search}`}>
           <span className="brand__mark" aria-hidden="true">
             <span className="brand__dot" />
             <span className="brand__line" />
@@ -24,8 +26,14 @@ export function Shell({ today, children }: { today: string | null; children: Rea
           <span className="brand__name">asof</span>
         </NavLink>
         <nav className="tabs" aria-label="Main">
-          <NavLink className="tabs__tab" to={`/${search}`} end>
-            Feed
+          <NavLink className="tabs__tab" to={`${DASHBOARD}${search}`} end>
+            Dashboard
+          </NavLink>
+          <NavLink className="tabs__tab" to={`/portfolios${search}`}>
+            Portfolios
+          </NavLink>
+          <NavLink className="tabs__tab" to={`/analytics${search}`}>
+            Analytics
           </NavLink>
           <NavLink className="tabs__tab" to={`/data${search}`}>
             Data health

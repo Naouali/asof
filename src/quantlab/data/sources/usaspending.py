@@ -16,9 +16,9 @@ chart that dates defence contracts by action date is looking three months ahead.
 Corporation", "Electric Boat Corporation", "CSRA LLC". The government groups
 entities under a parent, identified by a UEI, but one listed company is spread
 over several parents -- General Dynamics over five -- and no record anywhere links
-a parent to a ticker. :data:`CONTRACTORS` is that link, curated by hand from the
-government's own list of its largest contractors, and every ticker in it was
-checked against the SEC's list of registrants. A company not in it is absent from
+a parent to a ticker. ``configs/contractors.yaml`` is that link, curated by hand
+from the government's own list of its largest contractors, and every ticker in it
+was checked against the SEC's list of registrants. A company not in it is absent from
 the dataset, not idle. Joint ventures belong to no single ticker and are left out;
 so are parents listed abroad, whose US tickers are depositary receipts.
 
@@ -47,9 +47,11 @@ import time
 import zipfile
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, ClassVar
 
 import polars as pl
+import yaml
 
 from quantlab.data.catalogue import AssetClass, get_source
 from quantlab.data.http import SourceError
@@ -58,10 +60,13 @@ from quantlab.data.store import utcnow
 from quantlab.logging import get_logger
 
 __all__ = [
-    "CONTRACTORS",
+    "DEFAULT_MIN_OBLIGATION",
+    "DEFENSE_EMBARGO",
+    "PUBLICATION_LAG",
     "ContractActions",
     "Contractor",
     "known_at",
+    "load_contractors",
     "parse_transactions",
 ]
 
@@ -77,6 +82,10 @@ DEFENSE_EMBARGO = dt.timedelta(days=90)
 #: How far before the window to look by ACTION date, so that an action reported
 #: late, or released from the embargo, inside the window is still found.
 LOOKBACK = dt.timedelta(days=200)
+#: Actions smaller than this, in absolute value, are dropped unless the job says
+#: otherwise. Most actions are administrative modifications of a few thousand dollars.
+DEFAULT_MIN_OBLIGATION = 1_000_000.0
+CONTRACTORS_FILE = "contractors.yaml"
 #: Parent identifiers per download. The filter matches any of them.
 BATCH = 12
 #: The record has some 300 columns. Asking for these alone makes the file a
@@ -112,60 +121,57 @@ class Contractor:
     parent_ueis: tuple[str, ...]
 
 
-def _c(ticker: str, name: str, *ueis: str) -> Contractor:
-    return Contractor(ticker, name, ueis)
+def load_contractors(path: Path) -> tuple[Contractor, ...]:
+    """The curated link from the government's parent identifiers to tickers.
 
+    It lives in ``configs/contractors.yaml`` because it is a judgement somebody has
+    to keep current, not a fact of the code. It is checked as it is read: an
+    identifier claimed by two companies would file one company's contracts under
+    another's ticker, which is the one mistake this list exists to prevent.
+    """
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except FileNotFoundError:
+        raise SourceError(
+            "usaspending",
+            f"{path} does not exist. Contracts name legal entities, not tickers, and that "
+            "file is the only link between the two; nothing can be fetched without it.",
+        ) from None
+    except yaml.YAMLError as exc:
+        raise SourceError("usaspending", f"{path} is not valid YAML: {exc}") from exc
 
-#: Listed US contractors and the government's parent identifiers for each, taken
-#: from the largest contract recipients as USAspending ranked them on 2026-09-21.
-#: A subsidiary the government files as a parent of its own sits under its owner.
-CONTRACTORS: tuple[Contractor, ...] = (
-    _c("LMT", "Lockheed Martin", "ZFN2JJXBLZT3", "CWM4UN76ZQW8"),
-    _c("BA", "Boeing", "NU2UC8MX6NK1"),
-    _c("UNH", "UnitedHealth Group", "GVW2YMAK1AC1"),
-    _c("RTX", "RTX", "PPLZG8J3N9D4", "EGAVSJTA2D81"),  # with Rockwell Collins
-    _c(
-        "GD",
-        "General Dynamics",
-        "VF58HFRNGEL8",
-        "FAZSFFE6CST9",
-        "E7BEKJ4V9528",  # Electric Boat
-        "Q85KVUK3JBF5",  # NASSCO
-        "HAWKSQF848W7",  # Land Systems
-    ),
-    _c("NOC", "Northrop Grumman", "NKVZLJL93QT6"),
-    _c("LDOS", "Leidos", "ZL41ERXMPAR3", "MDSWM6MB1BH7", "FH7ML8E9EWJ7"),  # with Dynetics
-    _c("HII", "Huntington Ingalls Industries", "F9SDJAZFTLG6"),
-    _c("MCK", "McKesson", "S1RUKWWRYFL6", "JTAPCFM4NSL4"),
-    _c("FLR", "Fluor", "MFA3GM9L8X58"),
-    _c("LHX", "L3Harris Technologies", "SJULQDJ8NZU7"),
-    _c("BAH", "Booz Allen Hamilton", "MBPHTU7Y9S65"),
-    _c("AMTM", "Amentum", "TU4KCXMM9AP6"),
-    _c("HUM", "Humana", "ZE6ZM6NKSV43"),
-    _c("CACI", "CACI International", "QSRTXLFKV857"),
-    _c("SAIC", "Science Applications International", "MMLKPW9JLX64"),
-    _c("COR", "Cencora", "NWEGNLYTBDW4", "GTXTRMLFL9U7"),
-    _c("TXT", "Textron", "HKUMGJBEMKN3"),
-    _c("MRK", "Merck", "GYXFTAF6L3W4"),
-    _c("ORCL", "Oracle", "ZFKQZW16QPU3"),  # Oracle Health Government Services
-    _c("HON", "Honeywell", "JXSUJ4ALFHB4", "DMEGBYTVBQS5"),
-    _c("PLTR", "Palantir Technologies", "FSY4LVSBGWB7"),
-    _c("GE", "GE Aerospace", "JRZ1WHXAKBM3", "J1T1FEN3PWX6"),
-    _c("GEO", "GEO Group", "JMLKZZ1NL2Z6"),
-    _c("VVX", "V2X", "CG8SV4246V29", "NVC1EFKKYB93"),
-    _c("KBR", "KBR", "VJ3XVZC76HT9", "TGPKTMN8YL31"),
-    _c("RS", "Reliance", "SYN6DWFYMVT7"),
-    _c("T", "AT&T", "NT9TC1ZVV5N9"),
-    _c("PFE", "Pfizer", "MHBQULRMEEJ5"),
-    _c("PSN", "Parsons", "FFCMDLMXRK49"),
-    _c("OSK", "Oshkosh", "GVX8NG7QE7W9"),
-    _c("TKR", "Timken", "XBY5FEGMU441"),
-    _c("IBM", "IBM", "J64CSQTQNRC1"),
-    _c("FDX", "FedEx", "D8YCU3XSC4V5"),
-    _c("MMS", "Maximus", "TREKW6J3QSF5"),
-    _c("TPC", "Tutor Perini", "HMY5AMAJFT95"),
-    _c("SNEX", "StoneX Group", "ZRGFMMN3RXV8"),
-)
+    entries = raw.get("contractors") if isinstance(raw, dict) else None
+    if not isinstance(entries, list) or not entries:
+        raise SourceError("usaspending", f"{path} lists no contractors")
+
+    found: list[Contractor] = []
+    owner_of: dict[str, str] = {}
+    for entry in entries:
+        try:
+            ticker = str(entry["ticker"]).upper()
+            name = str(entry["name"])
+            ueis = tuple(str(uei).upper() for uei in entry["parent_ueis"])
+        except (KeyError, TypeError) as exc:
+            raise SourceError(
+                "usaspending", f"{path}: an entry lacks ticker, name or parent_ueis: {entry!r}"
+            ) from exc
+        if not ueis:
+            raise SourceError("usaspending", f"{path}: {ticker} lists no parent identifier")
+        if any(contractor.ticker == ticker for contractor in found):
+            raise SourceError("usaspending", f"{path}: {ticker} is listed twice")
+        for uei in ueis:
+            if len(uei) != 12 or not uei.isalnum():
+                raise SourceError(
+                    "usaspending", f"{path}: {uei!r} under {ticker} is not a 12-character UEI"
+                )
+            if uei in owner_of:
+                raise SourceError(
+                    "usaspending",
+                    f"{path}: {uei} is claimed by both {owner_of[uei]} and {ticker}",
+                )
+            owner_of[uei] = ticker
+        found.append(Contractor(ticker, name, ueis))
+    return tuple(found)
 
 
 def known_at(action: dt.date, reported_at: dt.datetime | None, *, defense: bool) -> dt.datetime:
@@ -218,31 +224,35 @@ class ContractActions(Source):
     spec: ClassVar = get_source("usaspending")
     dataset: ClassVar[str] = "government_contracts"
     asset_class: ClassVar[AssetClass] = AssetClass.EQUITY
-    default_symbols: ClassVar[tuple[str, ...]] = tuple(c.ticker for c in CONTRACTORS)
 
     def __init__(
         self,
         *,
-        min_obligation: float = 1_000_000.0,
+        min_obligation: float = DEFAULT_MIN_OBLIGATION,
+        contractors: str | Path | None = None,
         poll_seconds: float = 10.0,
         max_wait_seconds: float = 2400.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.min_obligation = float(min_obligation)
+        self.contractors_path = (
+            Path(contractors) if contractors else self.settings.layout.configs / CONTRACTORS_FILE
+        )
         self.poll_seconds = poll_seconds
         self.max_wait_seconds = max_wait_seconds
 
     def fetch(self, symbols: Sequence[str], start: dt.datetime, end: dt.datetime) -> pl.DataFrame:
         self.require_available()
-        wanted = [symbol.upper() for symbol in symbols] or list(self.default_symbols)
-        by_ticker = {c.ticker: c for c in CONTRACTORS}
+        by_ticker = {c.ticker: c for c in load_contractors(self.contractors_path)}
+        # No symbols named means every company in the list.
+        wanted = [symbol.upper() for symbol in symbols] or list(by_ticker)
         unknown = sorted(set(wanted) - set(by_ticker))
         if unknown:
             raise SourceError(
                 self.name,
                 f"no parent-company identifiers are recorded for {unknown}. Contracts name "
-                "legal entities, not tickers; add the company to CONTRACTORS first.",
+                f"legal entities, not tickers; add the company to {self.contractors_path} first.",
             )
         ticker_of = {uei: t for t in wanted for uei in by_ticker[t].parent_ueis}
 

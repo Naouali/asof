@@ -80,16 +80,20 @@ export function bytes(value: number): string {
   return `${Math.max(1, Math.round(value / 1e3))} KB`;
 }
 
-/** The most recent day quarterly fund holdings were due: 45 days after a quarter end. */
-export function lastFundDeadline(todayIso: string): string {
+/** A threshold as a sentence says it: "$25 million", "$1.5 billion", "$750,000". */
+export function roundDollars(value: number): string {
+  const trim = (scaled: number) => String(Number(scaled.toFixed(1)));
+  if (value >= 1e9) return `$${trim(value / 1e9)} billion`;
+  if (value >= 1e6) return `$${trim(value / 1e6)} million`;
+  return `$${Math.round(value).toLocaleString("en-US")}`;
+}
+
+/** The most recent day quarterly fund holdings were due: `fundDays` after a quarter end. */
+export function lastFundDeadline(todayIso: string, fundDays: number): string {
   const today = parseDay(todayIso);
   const year = today.getUTCFullYear();
-  const candidates = [year, year - 1].flatMap((y) => [
-    Date.UTC(y, 1, 14),
-    Date.UTC(y, 4, 15),
-    Date.UTC(y, 7, 14),
-    Date.UTC(y, 10, 14),
-  ]);
-  const past = candidates.filter((time) => time < today.getTime()).sort((a, b) => b - a);
+  // Quarter ends are the last day of March, June, September and December.
+  const deadlines = [year, year - 1, year - 2].flatMap((y) => [3, 6, 9, 12].map((month) => Date.UTC(y, month, 0) + fundDays * 86_400_000));
+  const past = deadlines.filter((time) => time < today.getTime()).sort((a, b) => b - a);
   return isoDay(new Date(past[0] ?? today.getTime()));
 }

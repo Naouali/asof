@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { DASHBOARD, portfolioHref } from "../lib/links";
+
 import type { SearchHit } from "../lib/api";
 import { useApi, useAsOf } from "../lib/hooks";
 
-const KIND_LABEL: Record<SearchHit["kind"], string> = { ticker: "Ticker", person: "Person", fund: "Fund" };
+const KIND_LABEL: Record<SearchHit["kind"], string> = { ticker: "Ticker", person: "Trades", fund: "Fund", portfolio: "Portfolio", agency: "Agency" };
 
 export function Search() {
   const [text, setText] = useState("");
@@ -38,17 +40,18 @@ export function Search() {
     setOpen(false);
     setText("");
     if (hit.kind === "ticker") navigate(`/t/${encodeURIComponent(hit.key)}${search}`);
+    else if (hit.kind === "portfolio") navigate(portfolioHref(hit.key, search));
     else {
       const params = new URLSearchParams(search);
       params.set("actor", hit.key);
-      navigate(`/?${params}`);
+      navigate(`${DASHBOARD}?${params}`);
     }
   };
 
   return (
     <div className="search" ref={root}>
       <label className="visually-hidden" htmlFor={`${listId}-input`}>
-        Search a ticker, a person or a fund
+        Search a ticker, a person, a fund or an agency
       </label>
       <input
         id={`${listId}-input`}
@@ -59,7 +62,7 @@ export function Search() {
         aria-controls={listId}
         aria-autocomplete="list"
         autoComplete="off"
-        placeholder="Search a ticker, a person or a fund"
+        placeholder="Search a ticker, a person, a fund or an agency"
         value={text}
         onChange={(event) => {
           setText(event.target.value);

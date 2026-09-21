@@ -2,8 +2,8 @@ import { Link } from "react-router-dom";
 
 import type { DisclosureEvent, FeedResponse, TickerResponse } from "../lib/api";
 import { shortDay } from "../lib/format";
-import { useApi, useAsOf } from "../lib/hooks";
-import { tickerHref } from "../lib/links";
+import { useApi, useAsOf, useRules } from "../lib/hooks";
+import { hasPortfolio, portfolioHref, tickerHref } from "../lib/links";
 import { lagText } from "./LagBar";
 import { Mark } from "./Mark";
 
@@ -27,6 +27,7 @@ function Line({ event, today, by }: { event: DisclosureEvent; today: string; by:
 /** What surrounds the selected disclosure: the rest of the company, and the rest of the person. */
 export function ContextPane({ event, today }: { event: DisclosureEvent; today: string }) {
   const { asOf, search } = useAsOf();
+  const rules = useRules();
   const company = useApi<TickerResponse>(event.ticker ? `/api/tickers/${encodeURIComponent(event.ticker)}` : null, { as_of: asOf });
   const person = useApi<FeedResponse>("/api/feed", { as_of: asOf, days: 365, actor: event.actor_id });
 
@@ -69,11 +70,16 @@ export function ContextPane({ event, today }: { event: DisclosureEvent; today: s
             ))}
           </ul>
         )}
+        {hasPortfolio(event) && (
+          <Link className="context__more" to={portfolioHref(event.actor_id, search)}>
+            Open their portfolio, compiled from these trades
+          </Link>
+        )}
       </section>
 
       <section>
         <h3>What you can't see here</h3>
-        <p className="context__brief">Congressional reports filed on paper, anything a fund has done since its last quarter end, and every Pentagon contract of the last 90 days. Short positions are never disclosed at all.</p>
+        <p className="context__brief">Congressional reports filed on paper, anything a fund has done since its last quarter end, and the Pentagon's most recent contracts{rules ? `, which it publishes ${rules.contracts.defense_embargo_days} days late` : ""}. Short positions are never disclosed at all.</p>
       </section>
     </div>
   );

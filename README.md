@@ -208,8 +208,9 @@ from inside the United States. A daily GitHub Actions job
 ([senate-mirror.yml](.github/workflows/senate-mirror.yml)) reads it from a US-hosted
 runner and commits what it saw to the `senate-mirror` branch of this repository,
 and the Senate fetchers read that branch by default. On a US machine, set
-`options: {direct: true}` on the two Senate jobs to read the Senate itself. A fork
-must point `mirror_url` at its own branch and run the workflow once by hand.
+`direct: true` on the two Senate jobs to read the Senate itself. The mirror's address
+is the `mirror_url` option of those jobs in [configs/ingest.yaml](configs/ingest.yaml);
+a fork points it at its own branch and runs the workflow once by hand.
 
 Read the "Disclosed
 trades" section of [docs/LIMITATIONS.md](docs/LIMITATIONS.md) before drawing
@@ -234,8 +235,9 @@ quantlab data query --as-of 2026-09-01 -d government_contracts \
 
 Three things to know before using it. `known_at` is a rule, not an observation: two
 days after the later of the action and its first report, plus 90 days for the
-Department of Defense. The ticker comes from a hand-curated map of the government's
-parent-company identifiers ([usaspending.py](src/quantlab/data/sources/usaspending.py)),
+Department of Defense. The ticker comes from a hand-curated list of the government's
+parent-company identifiers, [configs/contractors.yaml](configs/contractors.yaml),
+which is where a company is added,
 so a company outside the map is absent, not idle, and joint ventures belong to
 nobody. And `obligation_usd` is what one action committed -- often negative --
 while `potential_value_usd` is a ceiling that must never be summed.
@@ -246,7 +248,8 @@ while `potential_value_usd` is a ceiling that must never be summed.
 members of Congress and federal contracts. It is built around the one thing that data is about -- the
 gap between the day somebody traded and the day anyone else could know.
 
-- **Feed.** Every disclosure, ordered by the day it became public. Pick one and
+- **Dashboard**, at `/dashboard` (the bare address redirects there, keeping its
+  query). Every disclosure, ordered by the day it became public. Pick one and
   its record opens beside the list: what happened, the chain from the trade to
   the legal deadline to the filing, and what else that person and that company
   have disclosed. Grants, option exercises and pre-scheduled sales are hidden
@@ -272,6 +275,38 @@ gap between the day somebody traded and the day anyone else could know.
   contracts section: the net committed over the year, the agencies it came from,
   the thirty largest actions with their lag bars, and the eight largest on the
   price chart. The filter lives in the URL, like the as-of date.
+- **Finding your way.** Every view lives in its address: the as-of date, the filter,
+  the window, the analysis, the member, and the one record selected on the
+  dashboard (`?event=`), so any of them can be bookmarked or sent. Each page names
+  its browser tab ("LMT, Lockheed Martin Corp, as of 2026-07-01"). Search finds
+  tickers, people, funds, a member's portfolio and the agencies that sign
+  contracts. A member's trades and their compiled portfolio link to each other
+  from every place the member appears.
+- **Phones and tablets.** Three widths are designed for. Up to 1240px the dashboard
+  drops its third column; up to 1100px the top bar wraps, with the search and the
+  date sharing its second row; up to 860px everything is one column, a list comes
+  before its detail (choosing a record opens it on its own, with a way back), and
+  a row of filters scrolls sideways inside itself. No page is ever wider than the
+  screen: charts are clipped to their box and drawn to its measured width.
+- **Portfolios**, at `/portfolios`. Each member of Congress's portfolio, compiled from
+  the trades they disclosed: purchases less sales per ticker, sized at the middle
+  of each disclosed range with the honest low and high beside it. It is what they
+  bought and kept since the record begins, never what they own -- a report does
+  not say what was already held, so a sale of something never seen bought is
+  listed as "held from before", not as a short. Where the lake has prices, each
+  holding shows two returns: since they bought, and since the purchase became
+  public, which is the most a follower could have had. A chart draws the portfolio's
+  return over time: closed trades at their exit over their entry price, open ones
+  marked to each day's close, beside the same trades copied on the days they became
+  public. Follows the as-of date.
+- **Analytics**, at `/analytics`. Three questions asked of the whole lake, one screen
+  each, all following the as-of date. *What is being traded* ranks tickers by how
+  many PEOPLE bought and sold, never by dollars, because Congress discloses ranges
+  and funds disclose positions. *Price moved before you knew* shows, per group, how
+  far the price had gone between a trade and the day it became public, measured
+  only where the lake holds prices and saying how few tickers that is. *Government
+  money* adds up contract actions by company, agency and month of publication,
+  and, on a past date, counts what had been signed and was not public yet.
 - **Data health.** What the lake holds, how fresh it is, and which House reports
   were scans that could not be read.
 - **Landing page**, at `/welcome`. One screen, no scrolling, and no mock-ups: the
@@ -304,9 +339,9 @@ These are where the product is going. None of them exists today, and the app
 does not pretend otherwise.
 
 - **Chart information.** Richer price charts on the ticker page.
-- **Cloning a portfolio.** Rebuild what a member of Congress appears to hold from
-  their disclosed trades, then adjust it and keep it as your own. Only the
-  preview on the landing page exists, and it is an estimate: the House discloses
+- **Cloning a portfolio.** The Portfolios page compiles what a member appears to
+  hold; adjusting it and keeping it as your own is not built. Only the preview on
+  the landing page lets you move the weights, and it is an estimate: the House discloses
   value ranges, not amounts, and never a starting position.
 - **Login and teams.** Accounts, shared notes, alerts and saved views.
 - **Pages for a person and for a fund.** Today only a ticker has its own page.
@@ -368,6 +403,9 @@ src/quantlab/
     app.py          routes, security headers, one cached lens per as-of date
     events.py       one shape for three kinds of disclosure
     queries.py      what each page asks of the lake, through one as-of "lens"
+    analytics.py    what the rows add up to: people per ticker, price moves, contract totals
+    portfolios.py   a member's portfolio, compiled from their disclosed trades
+    rules.py        every threshold the app applies, for the interface to print
     models.py       the shapes the API returns
   cli.py            the `quantlab` command
   scheduler.py      cron-style runner for recurring ingests
@@ -387,6 +425,7 @@ src/quantlab/
     catalogue.py    source metadata and caveats
 configs/
   ingest.yaml       what to fetch
+  contractors.yaml  which listed companies own which government contractor IDs
   schedule.yaml     when to fetch it
 docker/             the base, worker and web images
 scripts/            gen_data_catalogue.py, which writes docs/DATA_CATALOGUE.md

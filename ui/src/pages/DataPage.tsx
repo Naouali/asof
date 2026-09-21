@@ -1,6 +1,6 @@
 import type { DataHealth } from "../lib/api";
 import { bytes, plural, shortDay, stampDay } from "../lib/format";
-import { useApi } from "../lib/hooks";
+import { useApi, useTitle } from "../lib/hooks";
 import { Problem } from "./FeedPage";
 
 const DISCLOSURE_SETS = new Set(["insider_transactions", "institutional_holdings", "congress_trades", "congress_filings", "fails_to_deliver"]);
@@ -13,6 +13,7 @@ function freshness(age: number | null): { label: string; tone: "fresh" | "aging"
 
 export function DataPage({ today }: { today: string }) {
   const { data, error } = useApi<DataHealth>("/api/data", {});
+  useTitle("Data health");
   if (error) return <Problem message={error} />;
   if (!data) return <p className="loading">Reading the lake…</p>;
 

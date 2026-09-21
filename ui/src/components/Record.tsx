@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { DisclosureEvent } from "../lib/api";
 import { dollars, longDay, plural } from "../lib/format";
 import { useAsOf } from "../lib/hooks";
-import { actorHref, tickerHref } from "../lib/links";
+import { actorHref, hasPortfolio, portfolioHref, tickerHref } from "../lib/links";
 
 const KIND_LABEL: Record<DisclosureEvent["kind"], string> = {
   insider: "Company insider",
@@ -94,7 +94,7 @@ function chain(event: DisclosureEvent): Step[] {
 }
 
 /** One disclosure, in full: what happened, and how and when the world found out. */
-export function RecordPane({ event }: { event: DisclosureEvent }) {
+export function RecordPane({ event, onActorPage = false }: { event: DisclosureEvent; onActorPage?: boolean }) {
   const { search } = useAsOf();
 
   if (event.kind === "unread") {
@@ -180,9 +180,17 @@ export function RecordPane({ event }: { event: DisclosureEvent }) {
             Open {event.ticker}
           </Link>
         )}
-        <Link className="button" to={actorHref(event, search)}>
-          Everything by {event.actor}
-        </Link>
+        {/* On their own page this button would lead to where the reader already is. */}
+        {!onActorPage && (
+          <Link className="button" to={actorHref(event, search)}>
+            Everything by {event.actor}
+          </Link>
+        )}
+        {hasPortfolio(event) && (
+          <Link className="button" to={portfolioHref(event.actor_id, search)}>
+            Their compiled portfolio
+          </Link>
+        )}
       </div>
     </article>
   );

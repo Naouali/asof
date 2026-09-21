@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { getJson } from "./api";
+import type { Rules } from "./api";
 
 export interface Loaded<T> {
   data: T | null;
@@ -30,6 +31,43 @@ export function useApi<T>(path: string | null, params: Record<string, string | n
   }, [key]);
 
   return state;
+}
+
+/**
+ * The browser tab's name. Four tabs all called "asof" cannot be told apart, and
+ * neither can a history full of them; a past date is part of what the page is.
+ */
+export function useTitle(title: string | null): void {
+  const { asOf } = useAsOf();
+  useEffect(() => {
+    const parts = [title, asOf ? `as of ${asOf}` : null].filter(Boolean).join(", ");
+    document.title = parts ? `${parts} · asof` : "asof";
+  }, [title, asOf]);
+}
+
+let rulesRequest: Promise<Rules> | null = null;
+
+/**
+ * The app's thresholds, fetched once for the life of the page. Null until they
+ * arrive: a sentence that needs one waits for it, and never falls back to a guess.
+ */
+export function useRules(): Rules | null {
+  const [rules, setRules] = useState<Rules | null>(null);
+  useEffect(() => {
+    let live = true;
+    rulesRequest ??= getJson<Rules>("/api/rules", {});
+    rulesRequest
+      .then((found) => {
+        if (live) setRules(found);
+      })
+      .catch(() => {
+        rulesRequest = null; // let the next page try again
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return rules;
 }
 
 /**

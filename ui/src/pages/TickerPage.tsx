@@ -5,14 +5,15 @@ import { LagBar } from "../components/LagBar";
 import { Legend, Mark } from "../components/Mark";
 import { PriceChart } from "../components/PriceChart";
 import type { TickerResponse } from "../lib/api";
-import { plural, shares as formatShares, dollars, shortDay, signedPercent } from "../lib/format";
-import { useApi, useAsOf } from "../lib/hooks";
-import { actorHref } from "../lib/links";
+import { plural, roundDollars, shares as formatShares, dollars, shortDay, signedPercent } from "../lib/format";
+import { useApi, useAsOf, useRules, useTitle } from "../lib/hooks";
+import { DASHBOARD, actorHref, hasPortfolio, portfolioHref } from "../lib/links";
 import { Problem } from "./FeedPage";
 
 export function TickerPage() {
   const { ticker = "" } = useParams();
   const { asOf, search } = useAsOf();
+  const rules = useRules();
   const { data, error, loading } = useApi<TickerResponse>(`/api/tickers/${encodeURIComponent(ticker)}`, { as_of: asOf });
   const [noise, setNoise] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -23,6 +24,7 @@ export function TickerPage() {
   const charted = useMemo(() => [...events, ...(contracts?.events ?? []).filter((event) => contracts?.on_chart.includes(event.id))], [events, contracts]);
   const selectable = useMemo(() => [...events, ...(contracts?.events ?? [])], [events, contracts]);
   useEffect(() => setSelected(null), [ticker, asOf]);
+  useTitle(data?.name ? `${ticker.toUpperCase()}, ${data.name}` : ticker.toUpperCase());
 
   if (error) return <Problem message={error} />;
   if (!data) return <p className="loading">Reading the lake…</p>;
@@ -38,8 +40,8 @@ export function TickerPage() {
       <main className="page__main">
         <header className="pagehead">
           <div>
-            <Link className="crumb" to={`/${search}`}>
-              Back to the feed
+            <Link className="crumb" to={`${DASHBOARD}${search}`}>
+              Back to the dashboard
             </Link>
             <div className="tickerhead">
               <h1 className="tickerhead__symbol">{data.ticker}</h1>
@@ -64,7 +66,7 @@ export function TickerPage() {
               <div className="readout" aria-live="polite">
                 <p>
                   <strong>{picked.actor}</strong> {picked.verb.toLowerCase()} {picked.size} on {shortDay(picked.traded_on, today)}. It became public on {shortDay(picked.disclosed_on, today)},{" "}
-                  {plural(picked.lag_days, "day")} later{picked.kind === "contract" && picked.lag_days > 60 ? ", because the Pentagon publishes 90 days late" : ""}.
+                  {plural(picked.lag_days, "day")} later{picked.kind === "contract" && rules && picked.lag_days >= rules.contracts.defense_embargo_days ? `, because the Pentagon publishes ${rules.contracts.defense_embargo_days} days late` : ""}.
                 </p>
                 {picked.price_move_pct !== null && (
                   <p className="readout__move">
@@ -108,7 +110,15 @@ export function TickerPage() {
                     <button type="button" className="row__select" aria-pressed={event.id === picked?.id} aria-label={`Show ${event.actor} on the chart`} onClick={() => setSelected(event.id)} />
                     <div className="row__who">
                       <Link to={actorHref(event, search)}>{event.actor}</Link>
-                      {event.role && <div className="row__sub">{event.role}</div>}
+                      <div className="row__sub">
+                        {event.role}
+                        {hasPortfolio(event) && (
+                          <>
+                            {event.role && ". "}
+                            <Link to={portfolioHref(event.actor_id, search)}>Portfolio</Link>
+                          </>
+                        )}
+                      </div>
                     </div>
                     <div className="row__what">
                       <Mark kind={event.kind} direction={event.direction} />
@@ -134,10 +144,11 @@ export function TickerPage() {
               <h2 id="contracts-title">Federal contracts</h2>
             </div>
             <p className="note">
-              A net <strong>{dollars(contracts.net_usd)}</strong> was committed across {plural(contracts.actions, "action")} of $1 million and over that became public in the last year
+              A net <strong>{dollars(contracts.net_usd)}</strong> was committed across {plural(contracts.actions, "action")}
+              {rules && ` of ${roundDollars(rules.contracts.min_action_usd)} and over`} that became public in the last year
               {contracts.taken_back > 0 ? `, ${contracts.taken_back} of them taking money back` : ""}.{" "}
               {contracts.agencies.map((agency) => `${agency.name} ${dollars(agency.net_usd)}`).join(", ")}. This is money committed over the life of each contract, not revenue.
-              {contracts.defense_share !== null && contracts.defense_share > 0 && ` ${Math.round(contracts.defense_share * 100)}% of it came from the Pentagon, whose actions are published 90 days late: look at the bars.`}
+              {contracts.defense_share !== null && contracts.defense_share > 0 && ` ${Math.round(contracts.defense_share * 100)}% of it came from the Pentagon${rules ? `, whose actions are published ${rules.contracts.defense_embargo_days} days late: look at the bars` : ""}.`}
             </p>
             <div className="ledger ledger--ticker">
               <div className="ledger__head" aria-hidden="true">
@@ -183,7 +194,7 @@ export function TickerPage() {
                 <path d="M8 4.5v4l2.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
               </svg>
               <span>
-                These positions were counted up to <strong>{oldest} days ago</strong>. Funds report once a quarter, up to 45 days late, and never report shorts.
+                These positions were counted up to <strong>{oldest} days ago</strong>. Funds report once a quarter{rules && `, up to ${rules.deadlines.fund_days} days late`}, and never report shorts.
               </span>
             </p>
             <div className="ledger ledger--funds">
@@ -197,7 +208,7 @@ export function TickerPage() {
               <ul className="ledger__rows">
                 {data.holders.map((holder) => (
                   <li key={holder.manager_id} className="row row--fund">
-                    <Link to={`/?${new URLSearchParams({ ...(asOf ? { asof: asOf } : {}), actor: holder.manager_id })}`}>{holder.manager}</Link>
+                    <Link to={`${DASHBOARD}?${new URLSearchParams({ ...(asOf ? { asof: asOf } : {}), actor: holder.manager_id })}`}>{holder.manager}</Link>
                     <span className="ledger__num">{formatShares(holder.shares)}</span>
                     <strong className="ledger__num">
                       {holder.change === null ? "First report held" : holder.change === 0 ? "No change" : `${holder.change > 0 ? "+" : "−"}${formatShares(Math.abs(holder.change))}`}
@@ -234,8 +245,8 @@ export function TickerPage() {
               <dd>Holdings are read for the managers in the ingest plan, not for every fund.</dd>
             </div>
             <div>
-              <dt>Pentagon contracts from the last 90 days.</dt>
-              <dd>They are published three months after they are signed.</dd>
+              <dt>The Pentagon's most recent contracts.</dt>
+              <dd>{rules ? `They are published ${rules.contracts.defense_embargo_days} days after they are signed.` : "They are published long after they are signed."}</dd>
             </div>
             <div>
               <dt>Anything a fund has done since its last quarter end.</dt>

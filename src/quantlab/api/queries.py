@@ -36,6 +36,7 @@ from quantlab.api.events import (
 )
 from quantlab.data.ingest import recent_runs
 from quantlab.data.schemas import empty_frame
+from quantlab.data.sources.usaspending import DEFENSE_EMBARGO
 from quantlab.data.store import Store, utcnow
 
 __all__ = ["Lens", "data_health", "feed", "search", "ticker_page"]
@@ -47,6 +48,12 @@ BEYOND_DAYS = 200
 BEYOND_LIMIT = 120
 PRICE_HISTORY_DAYS = 370
 TICKER_EVENT_DAYS = 370
+#: The two windows a ticker page's opening paragraph talks about.
+BRIEF_RECENT_DAYS = 30
+BRIEF_QUARTER_DAYS = 90
+#: Fund reports older than this are not compared at all. The longest window any
+#: page shows is a year, and a report surfaces up to 45 days after its quarter.
+FUND_HISTORY_DAYS = 550
 #: Contract actions this size and over reach the feed: about thirty a week across
 #: the mapped contractors. Below it there are fifty a day, nearly all of them
 #: funding increments, and they would bury every trade on the page.
@@ -123,6 +130,10 @@ class Lens:
             return {}
         return dict(zip(pairs["cusip"].to_list(), pairs["ticker"].to_list(), strict=True))
 
+    @property
+    def fund_since(self) -> dt.date:
+        return self.today - dt.timedelta(days=FUND_HISTORY_DAYS)
+
     @cached_property
     def events(self) -> list[Event]:
         trades = self.frame("congress_trades")
@@ -130,24 +141,41 @@ class Lens:
             *insider_events(self.frame("insider_transactions")),
             *congress_events(trades),
             *unread_report_events(self.frame("congress_filings"), trades),
-            *fund_events(self.frame("institutional_holdings"), self.bridge),
+            *fund_events(self.frame("institutional_holdings"), self.bridge, since=self.fund_since),
             *contract_events(self.frame("government_contracts"), min_usd=FEED_CONTRACT_MIN_USD),
         ]
         found.sort(key=lambda event: (event.disclosed_at, event.id), reverse=True)
         return found
+
+    @cached_property
+    def fund_changes(self) -> list[Event]:
+        """Every change in every tracked fund's book, unabridged. The feed keeps each
+        filing's largest few; a count of how many funds bought something needs all."""
+        return fund_events(
+            self.frame("institutional_holdings"),
+            self.bridge,
+            per_filing=None,
+            since=self.fund_since,
+        )
 
     def cusips_for(self, ticker: str) -> list[str]:
         return [cusip for cusip, symbol in self.bridge.items() if symbol == ticker]
 
 
 # -------------------------------------------------------------------------- feed --
+def _department_id(event: Event) -> str | None:
+    """A contract is signed by an office ("Dept of the Navy") inside a department
+    ("Department of Defense"). Both have a page; this is the department's id."""
+    return f"agency:{event.role.lower()}" if event.kind == "contract" and event.role else None
+
+
+def _by(event: Event, actor: str | None) -> bool:
+    return actor is None or event.actor_id == actor or _department_id(event) == actor
+
+
 def feed(lens: Lens, *, days: int, actor: str | None, live: Lens | None) -> dict[str, Any]:
     since = lens.today - dt.timedelta(days=days)
-    chosen = [
-        event
-        for event in lens.events
-        if event.disclosed_on > since and (actor is None or event.actor_id == actor)
-    ]
+    chosen = [event for event in lens.events if event.disclosed_on > since and _by(event, actor)]
 
     groups: dict[dt.date, list[Event]] = defaultdict(list)
     for event in chosen:
@@ -161,7 +189,7 @@ def feed(lens: Lens, *, days: int, actor: str | None, live: Lens | None) -> dict
             for event in live.events
             if event.kind != "unread"
             and event.traded_on <= lens.today < event.disclosed_on <= horizon
-            and (actor is None or event.actor_id == actor)
+            and _by(event, actor)
         ]
         # Soonest to surface first: the secret that was about to stop being one.
         beyond.sort(key=lambda event: (event.disclosed_at, event.id))
@@ -204,6 +232,11 @@ def _actor_label(lens: Lens, actor: str | None) -> dict[str, Any] | None:
     if actor is None:
         return None
     match = next((event for event in lens.events if event.actor_id == actor), None)
+    if match is None:
+        # A department's page: named after the department, which is its offices' role.
+        office = next((event for event in lens.events if _department_id(event) == actor), None)
+        if office is not None:
+            return {"id": actor, "name": office.role, "role": "Federal department"}
     return {
         "id": actor,
         "name": match.actor if match else actor,
@@ -245,7 +278,11 @@ def ticker_page(lens: Lens, ticker: str) -> dict[str, Any]:
 
     prices = _prices(lens, ticker)
     fund_changes = fund_events(
-        lens.frame("institutional_holdings"), lens.bridge, per_filing=None, only_cusips=cusips
+        lens.frame("institutional_holdings"),
+        lens.bridge,
+        per_filing=None,
+        only_cusips=cusips,
+        since=lens.fund_since,
     )
     # The feed keeps only each filing's largest fund changes. This page wants every
     # change in THIS security, so funds come from the unabridged list instead.
@@ -290,7 +327,7 @@ def _contract_brief(contracts: dict[str, Any] | None) -> list[str]:
     )
     share = contracts["defense_share"]
     if share is not None and share >= 0.5:
-        sentence += f", {share:.0%} of it from the Pentagon, which publishes 90 days late"
+        sentence += f", {share:.0%} of it from the Pentagon, which publishes {DEFENSE_EMBARGO.days} days late"
     return [sentence + "."]
 
 
@@ -463,8 +500,8 @@ def _brief(
     Every sentence is a count of rows on this page, so it can be checked against
     them by eye. Nothing here is a judgement.
     """
-    recent = lens.today - dt.timedelta(days=30)
-    quarter = lens.today - dt.timedelta(days=90)
+    recent = lens.today - dt.timedelta(days=BRIEF_RECENT_DAYS)
+    quarter = lens.today - dt.timedelta(days=BRIEF_QUARTER_DAYS)
     insiders = [e for e in events if e.kind == "insider" and not e.noise]
     buys = [e for e in insiders if e.direction == "buy" and e.disclosed_on > recent]
     sells = [e for e in insiders if e.direction == "sell" and e.disclosed_on > recent]
@@ -480,21 +517,21 @@ def _brief(
         total = money(sum(e.value_usd or 0.0 for e in buys))
         who = "One insider" if people == 1 else f"{people} insiders"
         sentences.append(
-            f"{who} bought {total} on the open market in the last 30 days, none of it pre-scheduled."
+            f"{who} bought {total} on the open market in the last {BRIEF_RECENT_DAYS} days, none of it pre-scheduled."
         )
     if sells:
         total = money(sum(e.value_usd or 0.0 for e in sells))
-        sentences.append(f"Insiders sold {total} by choice in the last 30 days.")
+        sentences.append(f"Insiders sold {total} by choice in the last {BRIEF_RECENT_DAYS} days.")
     if planned and not sells:
         total = money(sum(e.value_usd or 0.0 for e in planned))
         sentences.append(
-            f"Insiders sold {total} in the last 30 days, all of it under plans scheduled in advance."
+            f"Insiders sold {total} in the last {BRIEF_RECENT_DAYS} days, all of it under plans scheduled in advance."
         )
     if not buys and not sells and not planned:
         last = next((e for e in insiders), None)
         if last is not None:
             sentences.append(
-                f"No insider has traded by choice in the last 30 days. The last was "
+                f"No insider has traded by choice in the last {BRIEF_RECENT_DAYS} days. The last was "
                 f"{last.actor}, who {last.verb.lower()} on {last.traded_on:%-d %B}."
             )
 
@@ -504,7 +541,7 @@ def _brief(
         people = len({e.actor_id for e in members})
         who = "One member of Congress" if people == 1 else f"{people} members of Congress"
         sentences.append(
-            f"{who} disclosed trades in the last 90 days: {bought} bought, {len(members) - bought} sold."
+            f"{who} disclosed trades in the last {BRIEF_QUARTER_DAYS} days: {bought} bought, {len(members) - bought} sold."
         )
 
     if holders:
@@ -549,9 +586,18 @@ def search(lens: Lens, query: str, *, limit: int = 8) -> list[dict[str, Any]]:
             offer("person", event.actor_id, event.actor, event.role)
         elif event.kind == "fund":
             offer("fund", event.actor_id, event.actor, "Fund")
+        # A member of Congress has two pages: their trades, and what those add up to.
+        if event.kind == "congress":
+            offer("portfolio", event.actor_id, event.actor, "Compiled portfolio")
     for event in lens.events:
-        if event.ticker and event.kind == "contract":
+        if event.kind != "contract":
+            continue
+        if event.ticker:
             offer("ticker", event.ticker, event.ticker, "Federal contractor")
+        offer("agency", event.actor_id, event.actor, event.role or "Federal agency")
+        department = _department_id(event)
+        if department and event.role:
+            offer("agency", department, event.role, "Federal department")
     return [*starts, *contains][:limit]
 
 

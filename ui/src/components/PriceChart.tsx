@@ -4,6 +4,8 @@ import type { DisclosureEvent } from "../lib/api";
 import { monthName, parseDay, shortDay } from "../lib/format";
 
 const DEFAULT_HEIGHT = 340;
+/** Narrower than a phone's panel: the drawing must never be wider than its box. */
+const MIN_WIDTH = 260;
 const PAD = { top: 16, right: 14, bottom: 30, left: 52 };
 const BUY = "var(--buy)";
 const SELL = "var(--sell)";
@@ -50,7 +52,7 @@ export function PriceChart({
   useEffect(() => {
     const node = frame.current;
     if (!node) return;
-    const observer = new ResizeObserver(([entry]) => entry && setWidth(Math.max(360, Math.round(entry.contentRect.width))));
+    const observer = new ResizeObserver(([entry]) => entry && setWidth(Math.max(MIN_WIDTH, Math.round(entry.contentRect.width))));
     observer.observe(node);
     return () => observer.disconnect();
   }, []);

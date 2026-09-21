@@ -23,16 +23,29 @@ import threading
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from quantlab import __version__
-from quantlab.api import queries
+from quantlab.api import analytics, portfolios, queries
+from quantlab.api import rules as app_rules
 from quantlab.api.events import EASTERN, eastern_date
-from quantlab.api.models import DataHealth, FeedResponse, Health, SearchHit, TickerResponse
+from quantlab.api.models import (
+    ContractsResponse,
+    DataHealth,
+    FeedResponse,
+    Health,
+    PortfolioMembers,
+    PortfolioResponse,
+    PriceMovesResponse,
+    Rules,
+    SearchHit,
+    TickerResponse,
+    TradedResponse,
+)
 from quantlab.api.queries import Lens
 from quantlab.config import Settings, get_settings
 from quantlab.data.store import Store, utcnow
@@ -137,6 +150,10 @@ def create_app(
             "authentication": "none",
         }
 
+    @app.get("/api/rules", response_model=Rules)
+    def rules() -> dict[str, Any]:
+        return app_rules.rules(settings)
+
     @app.get("/api/feed", response_model=FeedResponse)
     def feed(
         as_of: AsOf = None,
@@ -157,6 +174,44 @@ def create_app(
     ) -> list[dict[str, Any]]:
         lens, _ = lenses.get(as_of)
         return queries.search(lens, q)
+
+    @app.get("/api/analytics/traded", response_model=TradedResponse)
+    def analytics_traded(
+        as_of: AsOf = None,
+        days: Annotated[int, Query(ge=1, le=400)] = 90,
+        kind: Annotated[Literal["insider", "congress", "fund"] | None, Query()] = None,
+    ) -> dict[str, Any]:
+        lens, _ = lenses.get(as_of)
+        return analytics.traded(lens, days=days, kind=kind)
+
+    @app.get("/api/analytics/price-moves", response_model=PriceMovesResponse)
+    def analytics_price_moves(
+        as_of: AsOf = None, days: Annotated[int, Query(ge=1, le=400)] = 365
+    ) -> dict[str, Any]:
+        lens, _ = lenses.get(as_of)
+        return analytics.price_moves(lens, days=days)
+
+    @app.get("/api/analytics/contracts", response_model=ContractsResponse)
+    def analytics_contracts(as_of: AsOf = None) -> dict[str, Any]:
+        lens, live = lenses.get(as_of)
+        return analytics.contracts(lens, live=live)
+
+    @app.get("/api/portfolios", response_model=PortfolioMembers)
+    def portfolio_members(as_of: AsOf = None) -> dict[str, Any]:
+        lens, _ = lenses.get(as_of)
+        return portfolios.members(lens)
+
+    @app.get("/api/portfolio", response_model=PortfolioResponse)
+    def portfolio(
+        actor: Annotated[str, Query(min_length=1, max_length=200)], as_of: AsOf = None
+    ) -> Any:
+        lens, _ = lenses.get(as_of)
+        found = portfolios.portfolio(lens, actor)
+        if found is None:
+            return JSONResponse(
+                {"detail": f"no disclosed trades by {actor!r} as of that date"}, status_code=404
+            )
+        return found
 
     @app.get("/api/data", response_model=DataHealth)
     def data() -> dict[str, Any]:

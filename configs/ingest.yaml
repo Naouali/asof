@@ -190,7 +190,8 @@ jobs:
   # The Senate's site answers only from inside the United States, so by default
   # these two read a mirror that a daily job on a US-hosted runner keeps on the
   # `senate-mirror` branch of this repository (.github/workflows/senate-mirror.yml).
-  # On a US machine, `options: {direct: true}` reads the Senate itself instead.
+  # `mirror_url` is where that branch is served from; a fork must point it at its
+  # own repository. On a US machine, `direct: true` reads the Senate itself instead.
   # The mirror starts in 2025; an earlier start here is an error, not an empty year.
   # The overlap is wide because the mirror can run a day or two behind the Senate.
   - fetcher: senate_efd.congress_filings
@@ -200,6 +201,8 @@ jobs:
       who did not trade.
     start: "2025-01-01"
     overlap_days: 14
+    options:
+      mirror_url: https://raw.githubusercontent.com/Naouali/asof/senate-mirror/senate
     symbols: []
 
   - fetcher: senate_efd.congress_trades
@@ -208,11 +211,14 @@ jobs:
       report was filed. Paper reports are scans and yield nothing.
     start: "2025-01-01"
     overlap_days: 14
+    options:
+      mirror_url: https://raw.githubusercontent.com/Naouali/asof/senate-mirror/senate
     symbols: []
 
-  # Federal contract actions for about forty listed contractors. `symbols: []`
-  # means every company in the fetcher's curated map; a ticker outside the map is
-  # an error, because contracts name legal entities and the map is the only link.
+  # Federal contract actions for the companies in configs/contractors.yaml.
+  # `symbols: []` means every company in that file; a ticker outside it is an
+  # error, because contracts name legal entities and the file is the only link.
+  # `min_obligation` is also what the app says its smallest contract action is.
   # The Pentagon publishes its actions 90 days late and `known_at` says so.
   - fetcher: usaspending.government_contracts
     description: >-

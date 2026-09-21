@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import { addDays, lastFundDeadline, stampDay } from "../lib/format";
-import { useAsOf } from "../lib/hooks";
+import { useAsOf, useRules } from "../lib/hooks";
 
 /**
  * The global as-of date. Everything on every page is read through it.
@@ -11,6 +11,7 @@ import { useAsOf } from "../lib/hooks";
  */
 export function AsOfControl({ today }: { today: string }) {
   const { asOf, setAsOf } = useAsOf();
+  const rules = useRules();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const inputId = useId();
@@ -40,7 +41,8 @@ export function AsOfControl({ today }: { today: string }) {
 
   const presets: { label: string; note: string; day: string | null }[] = [
     { label: "Today", note: "Everything disclosed so far", day: null },
-    { label: stampDay(lastFundDeadline(today)), note: "The last day quarterly fund holdings were due", day: lastFundDeadline(today) },
+    // Offered once the deadline is known: it comes from the API, not from here.
+    ...(rules ? [{ label: stampDay(lastFundDeadline(today, rules.deadlines.fund_days)), note: "The last day quarterly fund holdings were due", day: lastFundDeadline(today, rules.deadlines.fund_days) }] : []),
     { label: stampDay(addDays(today, -30)), note: "One month ago", day: addDays(today, -30) },
     { label: stampDay(addDays(today, -365)), note: "One year ago", day: addDays(today, -365) },
   ];

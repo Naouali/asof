@@ -1,9 +1,9 @@
-"""One shape for three kinds of disclosure.
+"""One shape for four kinds of disclosure.
 
 An insider's Form 4, a member of Congress's transaction report, a fund's 13F and a
-federal contract action have
-nothing in common as documents. To a reader they are the same thing: somebody did
-something on one day, and the world found out on another. This module turns each
+federal contract action have nothing in common as documents. To a reader they are
+the same thing: somebody did something on one day, and the world found out on
+another. This module turns each
 dataset into that one shape -- an :class:`Event` -- so the feed, the ticker page
 and the search index never need to know which filing a row came from.
 
@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 import polars as pl
 
 from quantlab.data.calendars import is_federal_workday
+from quantlab.data.sources.usaspending import DEFENSE_EMBARGO
 
 __all__ = [
     "CONGRESS_DEADLINE_DAYS",
@@ -222,6 +223,28 @@ def business_days_between(start: dt.date, end: dt.date) -> int:
 
 
 # ---------------------------------------------------------------------- insiders --
+def _own_issuer_only(frame: pl.DataFrame) -> pl.DataFrame:
+    """Drop forms a company filed as an OWNER of somebody else's stock.
+
+    A company's filing index lists those beside the forms its own insiders file,
+    and the fetcher used to keep both under the company's ticker: Alphabet's trades
+    in a start-up it backs, shown as insider trades in Alphabet. The fetcher now
+    drops them, but the lake is append-only and still holds the old rows. A
+    ticker's own issuer is the one most of its rows name; the rest are dropped.
+    Rows with no issuer recorded are kept, since nothing says they are wrong.
+    """
+    if "issuer_cik" not in frame.columns:
+        return frame
+    own = frame.group_by("symbol").agg(
+        pl.col("issuer_cik").drop_nulls().mode().first().alias("_own")
+    )
+    return (
+        frame.join(own, on="symbol", how="left")
+        .filter(pl.col("issuer_cik").is_null() | (pl.col("issuer_cik") == pl.col("_own")))
+        .drop("_own")
+    )
+
+
 def insider_events(frame: pl.DataFrame) -> list[Event]:
     """One event per filing, per owner, per kind of transaction.
 
@@ -231,6 +254,7 @@ def insider_events(frame: pl.DataFrame) -> list[Event]:
     """
     if frame.height == 0:
         return []
+    frame = _own_issuer_only(frame)
 
     grouped = (
         frame.with_columns((pl.col("shares") * pl.col("price")).alias("_value"))
@@ -436,6 +460,7 @@ def fund_events(
     *,
     per_filing: int | None = FUND_CHANGES_PER_FILING,
     only_cusips: Iterable[str] | None = None,
+    since: dt.date | None = None,
 ) -> list[Event]:
     """What changed between each fund's report and the one before it.
 
@@ -443,6 +468,10 @@ def fund_events(
     from the previous quarter -- and it carries the dishonesty of that in its
     dates: ``traded_on`` is the quarter END, because the form does not say when in
     the quarter anything happened, only what was held when it closed.
+
+    ``since`` leaves out quarters that closed before it. The lake holds a decade of
+    reports and the app shows a year; comparing fifty quarters to draw four is
+    most of what a first visit to a date used to wait for.
     """
     if holdings.height == 0:
         return []
@@ -479,6 +508,8 @@ def fund_events(
         # events: calling every position in it "new" would be an artefact of where
         # ingestion happened to start.
         for earlier, period in pairwise(periods):
+            if since is not None and period.date() < since:
+                continue
             now = book.filter(pl.col("as_of") == period)
             before = book.filter(pl.col("as_of") == earlier)
             if now.height == 0 and before.height == 0:
@@ -661,7 +692,9 @@ def contract_events(frame: pl.DataFrame, *, min_usd: float = 0.0) -> list[Event]
         if row["parent_name"] and not _same_company(row["recipient_name"], row["parent_name"]):
             notes.append(f"Signed by {signer}.")
         if row["defense"]:
-            notes.append("The Pentagon publishes its contract actions 90 days late.")
+            notes.append(
+                f"The Pentagon publishes its contract actions {DEFENSE_EMBARGO.days} days late."
+            )
 
         events.append(
             Event(

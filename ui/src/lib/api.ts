@@ -91,7 +91,7 @@ export interface TickerResponse {
 }
 
 export interface SearchHit {
-  kind: "ticker" | "person" | "fund";
+  kind: "ticker" | "person" | "fund" | "portfolio" | "agency";
   key: string;
   label: string;
   note: string | null;
@@ -144,4 +144,158 @@ export async function getJson<T>(path: string, params: Record<string, string | n
     throw new ApiError(response.status, detail);
   }
   return (await response.json()) as T;
+}
+
+// ---------------------------------------------------------------- portfolios --
+export interface PortfolioMember {
+  actor_id: string;
+  actor: string;
+  role: string | null;
+  chamber: string;
+  trades: number;
+  tickers: number;
+  last_disclosed: string | null;
+}
+
+export interface PortfolioMembers {
+  as_of: string;
+  today: string;
+  members: PortfolioMember[];
+}
+
+/** What a member has bought and kept in one ticker: midpoints netted, with the honest low and high beside it. */
+export interface Holding {
+  ticker: string;
+  asset: string | null;
+  weight_pct: number;
+  mid_usd: number;
+  low_usd: number;
+  high_usd: number;
+  purchases: number;
+  sales: number;
+  first_bought: string;
+  last_trade: string | null;
+  accounts: string[];
+  /** Null where the lake holds no prices for the ticker. */
+  return_since_bought_pct: number | null;
+  /** From the day the purchase became public: the return a follower could have had. */
+  return_since_public_pct: number | null;
+}
+
+export interface SoldPosition {
+  ticker: string;
+  asset: string | null;
+  /** Exit price over entry price. Null without prices, or while shares are still held. */
+  return_pct: number | null;
+  sold_low_usd: number;
+  sold_high_usd: number;
+  last_trade: string | null;
+}
+
+export interface PortfolioResponse {
+  as_of: string;
+  today: string;
+  actor_id: string;
+  actor: string;
+  role: string | null;
+  chamber: string;
+  /** The day the first report the lake holds for this chamber became public. */
+  since: string | null;
+  trades: number;
+  mid_usd: number;
+  low_usd: number;
+  high_usd: number;
+  holdings: Holding[];
+  closed: SoldPosition[];
+  held_before: SoldPosition[];
+  left_out: { options: number; exchanges: number; no_ticker: number };
+  /**
+   * The return over time: closed trades at their exit over their entry price, open
+   * ones marked to each day's close, over everything put in so far. Null without prices.
+   */
+  performance: {
+    points: { date: string; member_pct: number; follower_pct: number | null }[];
+    member_pct: number;
+    follower_pct: number | null;
+    purchases: number;
+    tickers: number;
+  } | null;
+  priced_share: number;
+  returns: { since_bought_pct: number; since_public_pct: number } | null;
+}
+
+/**
+ * Every threshold the app applies, from /api/rules. A sentence that mentions one
+ * prints it from here: a number typed into the interface as well would one day
+ * disagree with the number the app is actually using.
+ */
+export interface Rules {
+  deadlines: { congress_days: number; fund_days: number; insider_business_days: number };
+  contracts: {
+    min_action_usd: number;
+    feed_min_usd: number;
+    publication_lag_days: number;
+    defense_embargo_days: number;
+    companies: number | null;
+    listed_per_ticker: number;
+    on_chart: number;
+  };
+  feed: { fund_changes_per_filing: number; fund_min_change_pct: number };
+  analytics: { min_sample: number; max_lag_days: number };
+  portfolios: { min_priced_share_pct: number };
+}
+
+// ----------------------------------------------------------------- analytics --
+export interface TradedResponse {
+  as_of: string;
+  today: string;
+  days: number;
+  kind: string | null;
+  trades: number;
+  tickers_total: number;
+  /** Distinct filers on each side: the one count every source supports. */
+  tickers: { ticker: string; name: string | null; buyers: number; sellers: number }[];
+  people: { actor_id: string; actor: string; role: string | null; kind: "insider" | "congress"; buys: number; sells: number; tickers: number }[];
+}
+
+/** Percent price moves between a trade and its disclosure. Null under five trades. */
+export interface Spread {
+  n: number;
+  median: number | null;
+  p10: number | null;
+  p25: number | null;
+  p75: number | null;
+  p90: number | null;
+}
+
+export interface PriceMovesResponse {
+  as_of: string;
+  today: string;
+  days: number;
+  trades: number;
+  measured: number;
+  priced_tickers: number;
+  groups: { key: "insider" | "house" | "senate" | "fund"; label: string; buy: Spread; sell: Spread }[];
+  examples: DisclosureEvent[];
+}
+
+export interface ContractTotal {
+  name: string;
+  net_usd: number;
+  defense_usd: number;
+  actions: number;
+}
+
+export interface ContractsAnalytics {
+  as_of: string;
+  today: string;
+  is_live: boolean;
+  actions: number;
+  net_usd: number;
+  defense_usd: number;
+  companies: ContractTotal[];
+  agencies: ContractTotal[];
+  months: { month: string; committed_usd: number; taken_back_usd: number }[];
+  /** Signed by the as-of date and not public yet. Null when looking at today. */
+  hidden: { actions: number; net_usd: number; defense_actions: number } | null;
 }
