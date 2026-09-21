@@ -892,6 +892,47 @@ _DISCLOSURES: tuple[SourceSpec, ...] = (
         ),
     ),
     SourceSpec(
+        key="usaspending",
+        name="USAspending.gov (US Treasury): federal contract actions",
+        url="https://api.usaspending.gov",
+        asset_classes=(AssetClass.EQUITY,),
+        datasets=("government_contracts",),
+        pit_quality=PitQuality.VINTAGE,
+        update_frequency="daily; civilian actions within days, Pentagon actions after 90",
+        licence="US Government public domain",
+        reliability="stable",
+        key_setting=None,
+        rate_limit="none published",
+        max_requests_per_second=1.0,
+        caveats=(
+            "PENTAGON ACTIONS ARE PUBLISHED 90 DAYS LATE, by policy. The record says an "
+            "action happened on its action date and says nothing about the embargo, so "
+            "`known_at` adds it: 92 days after the later of the action and its first "
+            "report for the Department of Defense, 2 days for everyone else. Dating a "
+            "defence contract by its action date is a three-month look-ahead.",
+            "`known_at` is therefore a RULE, not an observation. The 2 days stand for "
+            "the nightly load from the procurement system; an agency that reports late "
+            "is caught by `reported_at`, but a load that ran slow is not.",
+            "The timely defence signal is NOT here. The Pentagon announces contracts "
+            "over $7.5 million each afternoon on its own site, which is what moves a "
+            "stock; that page is not fetched.",
+            "`symbol` comes from a curated map of parent-company identifiers to "
+            "tickers, not from the data: about forty listed US contractors. A company "
+            "outside the map is absent, not idle. Joint ventures are left out because "
+            "they belong to no single ticker, and foreign-listed parents because their "
+            "US tickers are depositary receipts. The government's own parent records "
+            "lag acquisitions by months or years.",
+            "`obligation_usd` is money committed by one action and is often negative. "
+            "`potential_value_usd` is a ceiling that includes unexercised options and "
+            "indefinite-delivery limits that are rarely reached. Most rows are small "
+            "modifications; actions under $1 million are dropped at ingest by default.",
+            "A contract is revenue over years, already guided for, and usually known to "
+            "the market long before the paperwork. Its presence here is not news.",
+            "Each run looks back 200 days by action date, so an action first reported "
+            "more than 200 days late is only picked up by a full ingest.",
+        ),
+    ),
+    SourceSpec(
         key="house_clerk",
         name="US House of Representatives financial disclosures (Office of the Clerk)",
         url="https://disclosures-clerk.house.gov/FinancialDisclosure",

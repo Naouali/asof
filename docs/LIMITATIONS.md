@@ -329,6 +329,24 @@ other things. The Senate's site makes each visitor accept that; the House's does
 not ask, and is covered by the same law. What that means for a product built on
 this data is a question for a lawyer, not for this document.
 
+**A contract's date is not the day anyone knew.** Pentagon contract actions enter
+the public record 90 days after they happen; civilian ones within days. The record
+shows only the action date, so `known_at` in `government_contracts` is a rule --
+two days after the later of the action and its first report, plus the embargo for
+defence -- and not an observed publication time. The timely defence signal, the
+Pentagon's daily announcement of contracts over $7.5 million, is not fetched. A
+contract is also rarely news: it is revenue over years, usually guided for, and
+the market generally knew before the paperwork. Most rows are modifications, many
+are negative, and the award ceiling (`potential_value_usd`) counts options that may
+never be exercised.
+
+**Contracts reach a ticker through a hand-made map.** The government records legal
+entities grouped under parents; nothing links a parent to a listed company. About
+forty US-listed contractors are mapped, from the government's own ranking of its
+largest recipients. Everyone else is absent. Joint ventures are left out, foreign
+parents are left out, and the government's parent records lag acquisitions, so a
+newly bought subsidiary keeps filing under its old owner for a while.
+
 **Congressional trade sizes are brackets.** "$1,001 - $15,000" is the entire
 disclosure, and the brackets widen to "$5,000,001 - $25,000,000". Any dollar
 aggregate is an order-of-magnitude statement. The ticker is whatever the member

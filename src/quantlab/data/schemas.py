@@ -489,6 +489,44 @@ DATASETS: dict[str, DatasetSchema] = {
         key=("symbol", "doc_id", "line"),
         required=("chamber", "doc_id", "line", "member", "transaction_type", "amount_min"),
     ),
+    "government_contracts": DatasetSchema(
+        name="government_contracts",
+        description=(
+            "Federal contract actions -- new awards, funding, options exercised, "
+            "money taken back -- for a curated list of listed contractors, one row "
+            "per action. `symbol` is the listed PARENT's ticker; the entity that "
+            "signed is in `recipient_name`. `as_of` is the ACTION date. `known_at` "
+            "is later, and for the Pentagon much later: defence actions are "
+            "withheld from the public record for 90 days. `obligation_usd` is what "
+            "THIS action committed and is negative when money is de-obligated; "
+            "`potential_value_usd` is the ceiling of the whole award, options "
+            "included, and is what a headline quotes. Never sum the ceiling."
+        ),
+        columns={
+            "transaction_key": pl.Utf8(),
+            "award_id": pl.Utf8(),
+            "modification_number": pl.Utf8(),
+            "parent_award_id": pl.Utf8(),
+            "recipient_name": pl.Utf8(),
+            "recipient_uei": pl.Utf8(),
+            "parent_name": pl.Utf8(),
+            "parent_uei": pl.Utf8(),
+            "awarding_agency": pl.Utf8(),
+            "awarding_sub_agency": pl.Utf8(),
+            "defense": pl.Boolean(),
+            "action_type": pl.Utf8(),
+            "obligation_usd": pl.Float64(),
+            "total_obligated_usd": pl.Float64(),
+            "potential_value_usd": pl.Float64(),
+            "description": pl.Utf8(),
+            "naics_code": pl.Utf8(),
+            "naics_description": pl.Utf8(),
+            "reported_at": pl.Datetime("us", "UTC"),
+            "url": pl.Utf8(),
+        },
+        key=("symbol", "transaction_key"),
+        required=("transaction_key", "award_id", "recipient_name", "parent_uei", "obligation_usd"),
+    ),
     "fails_to_deliver": DatasetSchema(
         name="fails_to_deliver",
         description=(

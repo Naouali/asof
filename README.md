@@ -12,8 +12,8 @@ It is two things in one repository:
 
 - **The app** — a read-only web interface over the disclosure data. See
   [The app](#the-app).
-- **The ETL underneath it** — twenty-two fetchers over seventeen free sources
-  (disclosures, prices, fundamentals, macro, crypto, options), landing in a local
+- **The ETL underneath it** — twenty-three fetchers over eighteen free sources
+  (disclosures, contracts, prices, fundamentals, macro, crypto, options), landing in a local
   parquet lake that DuckDB queries in-process. Everything the app needs is
   fetched without an API key.
 
@@ -54,6 +54,7 @@ source, skips a failed job silently, or returns an empty frame to mean "error".
 | `house_clerk.congress_filings` | index of every House disclosure document | reference | vintage | none |
 | `senate_efd.congress_trades` | trades disclosed by US senators, read through this repository's mirror | equity | vintage | none |
 | `senate_efd.congress_filings` | index of Senate transaction reports, paper ones included | reference | vintage | none |
+| `usaspending.government_contracts` | federal contract actions of ~40 listed contractors, by parent company | equity | vintage | none |
 | `ken_french.series_observations` | factor returns | factors | restated | none |
 | `open_asset_pricing.anomaly_catalogue` | published anomaly catalogue | reference | restated | none |
 
@@ -213,6 +214,31 @@ must point `mirror_url` at its own branch and run the workflow once by hand.
 Read the "Disclosed
 trades" section of [docs/LIMITATIONS.md](docs/LIMITATIONS.md) before drawing
 conclusions from any of this.
+
+## Government contracts
+
+`usaspending.government_contracts` reads the Treasury's record of federal contract
+actions -- new awards, funding, options exercised, money taken back -- for about
+forty listed contractors, and files each under the listed parent's ticker.
+
+```bash
+quantlab data ingest -f usaspending.government_contracts
+
+# What was PUBLIC about Lockheed on 1 September. The Pentagon publishes its
+# contract actions 90 days late, so June's defence awards are not in this answer.
+quantlab data query --as-of 2026-09-01 -d government_contracts \
+  "select as_of::date action, known_at::date public, awarding_sub_agency, recipient_name,
+          obligation_usd, description
+   from government_contracts where symbol = 'LMT' order by known_at desc limit 20"
+```
+
+Three things to know before using it. `known_at` is a rule, not an observation: two
+days after the later of the action and its first report, plus 90 days for the
+Department of Defense. The ticker comes from a hand-curated map of the government's
+parent-company identifiers ([usaspending.py](src/quantlab/data/sources/usaspending.py)),
+so a company outside the map is absent, not idle, and joint ventures belong to
+nobody. And `obligation_usd` is what one action committed -- often negative --
+while `potential_value_usd` is a ceiling that must never be summed.
 
 ## The app
 

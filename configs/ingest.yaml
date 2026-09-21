@@ -198,6 +198,20 @@ jobs:
     overlap_days: 14
     symbols: []
 
+  # Federal contract actions for about forty listed contractors. `symbols: []`
+  # means every company in the fetcher's curated map; a ticker outside the map is
+  # an error, because contracts name legal entities and the map is the only link.
+  # The Pentagon publishes its actions 90 days late and `known_at` says so.
+  - fetcher: usaspending.government_contracts
+    description: >-
+      New awards, funding, options and de-obligations of $1 million and over,
+      filed under the listed parent's ticker. Four generated downloads a run, at
+      about half a minute each.
+    start: "2024-01-01"
+    options:
+      min_obligation: 1000000
+    symbols: []
+
   # ------------------------------------------------------------ positioning ----
   # Weekly futures positioning. `as_of` is the Tuesday snapshot and `known_at` is
   # the Friday 15:30 ET release -- a three-day gap that is the most common

@@ -67,6 +67,7 @@ reported by `quantlab data catalogue`.
 | [`stooq`](#stooq) | equity, futures, fx | `survivorship_biased` | none | 4 |
 | [`tiingo`](#tiingo) | equity, crypto | `restated` | `tiingo_api_key` | 1 |
 | [`treasury_fiscaldata`](#treasury-fiscaldata) | rates, macro | `as_published` | none | 2 |
+| [`usaspending`](#usaspending) | equity | `vintage` | none | 7 |
 | [`usda_nass`](#usda-nass) | commodity | `restated` | `usda_nass_api_key` | 2 |
 | [`yahoo`](#yahoo) | equity, futures, fx, options | `survivorship_biased` | none | 5 |
 | [`yahoo_futures`](#yahoo-futures) | futures, commodity | `as_published` | none | 3 |
@@ -438,6 +439,32 @@ reported by `quantlab data catalogue`.
 **Caveats**
 
 - Free tier limits preclude universe-wide ingest; cross-check only.
+
+### usaspending
+
+**USAspending.gov (US Treasury): federal contract actions** — <https://api.usaspending.gov>
+
+| Field | Value |
+| --- | --- |
+| Datasets | `government_contracts` |
+| Asset classes | equity |
+| Point-in-time | `vintage` |
+| Update frequency | daily; civilian actions within days, Pentagon actions after 90 |
+| Reliability | stable |
+| Rate limit | none published |
+| Ingest throttle | 1.0 req/s |
+| Licence | US Government public domain |
+| API key | not required |
+
+**Caveats**
+
+- PENTAGON ACTIONS ARE PUBLISHED 90 DAYS LATE, by policy. The record says an action happened on its action date and says nothing about the embargo, so `known_at` adds it: 92 days after the later of the action and its first report for the Department of Defense, 2 days for everyone else. Dating a defence contract by its action date is a three-month look-ahead.
+- `known_at` is therefore a RULE, not an observation. The 2 days stand for the nightly load from the procurement system; an agency that reports late is caught by `reported_at`, but a load that ran slow is not.
+- The timely defence signal is NOT here. The Pentagon announces contracts over $7.5 million each afternoon on its own site, which is what moves a stock; that page is not fetched.
+- `symbol` comes from a curated map of parent-company identifiers to tickers, not from the data: about forty listed US contractors. A company outside the map is absent, not idle. Joint ventures are left out because they belong to no single ticker, and foreign-listed parents because their US tickers are depositary receipts. The government's own parent records lag acquisitions by months or years.
+- `obligation_usd` is money committed by one action and is often negative. `potential_value_usd` is a ceiling that includes unexercised options and indefinite-delivery limits that are rarely reached. Most rows are small modifications; actions under $1 million are dropped at ingest by default.
+- A contract is revenue over years, already guided for, and usually known to the market long before the paperwork. Its presence here is not news.
+- Each run looks back 200 days by action date, so an action first reported more than 200 days late is only picked up by a full ingest.
 
 ### yahoo
 
