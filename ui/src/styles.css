@@ -3271,3 +3271,128 @@ li:first-child > .item {
     flex-grow: 1;
   }
 }
+
+/* ------------------------------------------------------------ holdings ring --
+   Beside the portfolio's opening paragraph. Shades of ink for ranked amounts; the
+   hollow slice is everything outside the largest few. */
+:root {
+  --pie-deep: #647996;
+}
+
+.folio__top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 24px 48px;
+}
+
+.pie {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin: 0;
+}
+
+.pie svg {
+  flex-shrink: 0;
+}
+
+.pie__slice {
+  stroke: none;
+  transition: opacity 120ms;
+  cursor: default;
+}
+
+.pie__slice--rest {
+  stroke: var(--ink-faint);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+
+.pie__slice--dim {
+  opacity: 0.35;
+}
+
+.pie__figure {
+  fill: var(--ink);
+  font-family: var(--serif);
+  font-size: 30px;
+}
+
+.pie__caption {
+  fill: var(--ink-muted);
+  font-size: 13px;
+}
+
+.pie__list {
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  list-style: none;
+}
+
+.pie__row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.pie__row--on {
+  background: var(--panel-on);
+}
+
+.pie__row a {
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration-color: var(--rule-strong);
+}
+
+.pie__row a:hover {
+  color: var(--mark);
+}
+
+.pie__row span {
+  color: var(--ink-muted);
+}
+
+.pie__row strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.pie__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.pie__swatch--rest {
+  border: 1.5px dashed var(--ink-faint);
+}
+
+@media (max-width: 1240px) {
+  .folio__top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .pie {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pie__list {
+    width: 100%;
+  }
+}
+
+@media (pointer: coarse) {
+  .pie__row a {
+    display: inline-block;
+    padding-block: 6px;
+  }
+}

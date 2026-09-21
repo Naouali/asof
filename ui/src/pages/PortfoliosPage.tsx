@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { HoldingsPie } from "../components/HoldingsPie";
 import { ReturnChart } from "../components/ReturnChart";
 import type { Holding, PortfolioMember, PortfolioMembers, PortfolioResponse, SoldPosition } from "../lib/api";
 import { dollars, plural, shortDay, signedPercent } from "../lib/format";
@@ -162,7 +163,8 @@ function Portfolio({ actor }: { actor: string }) {
 
   return (
     <article className={`folio__body${loading ? " folio__body--stale" : ""}`}>
-      <header className="folio__head">
+      <div className="folio__top">
+        <header className="folio__head">
         <p className="record__context">{data.role === "Senate" ? "Sits in the Senate" : `Represents ${data.role} in the House`}</p>
         <h2 className="record__headline">
           {data.holdings.length === 0
@@ -181,7 +183,9 @@ function Portfolio({ actor }: { actor: string }) {
             Every trade by {data.actor}
           </Link>
         </div>
-      </header>
+        </header>
+        {data.holdings.length > 0 && <HoldingsPie holdings={data.holdings} count={PIE_HOLDINGS} search={search} />}
+      </div>
 
       {data.performance ? (
         <section className="panel" aria-labelledby="folio-return">
@@ -257,6 +261,8 @@ function Portfolio({ actor }: { actor: string }) {
 
 /** How many holdings show before "show all": one screen's worth. */
 const FIRST = 12;
+/** How many holdings get a slice of their own in the ring; the rest share one. */
+const PIE_HOLDINGS = 7;
 
 function Row({ holding, widest, today, search }: { holding: Holding; widest: number; today: string; search: string }) {
   const others = holding.accounts.filter((account) => account !== "their own");
