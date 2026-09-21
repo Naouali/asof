@@ -148,9 +148,11 @@ def test_the_record_begins_with_the_first_report_not_the_first_trade(lake: Store
 
 
 def test_a_follower_gets_the_return_from_the_day_it_became_public(lake: Store) -> None:
+    # Stamped at the 21:00 close, which is the same day in Washington. At midnight
+    # UTC each bar would land on the evening before and the trades would miss them.
     lake.write(
-        _prices("OSPR", {at(2026, 7, 2): 30.0, at(2026, 7, 9): 30.0, at(2026, 9, 16): 45.0,
-                         at(2026, 9, 18): 54.0}),
+        _prices("OSPR", {at(2026, 7, 2, 21): 30.0, at(2026, 7, 9, 21): 30.0,
+                         at(2026, 9, 16, 21): 45.0, at(2026, 9, 18, 21): 54.0}),
         asset_class="equity",
     )  # fmt: skip
     found = _portfolio(lake)

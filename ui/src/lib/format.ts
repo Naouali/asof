@@ -56,17 +56,35 @@ export function plural(count: number, one: string, many = `${one}s`): string {
 
 export function shares(value: number): string {
   const magnitude = Math.abs(value);
-  if (magnitude >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
-  if (magnitude >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
-  return Math.round(value).toLocaleString("en-US");
+  const sign = value < 0 ? "-" : "";
+  if (magnitude < 1e6) return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  return `${sign}${scaled(magnitude)}`;
+}
+
+const UNITS: [number, string, number][] = [
+  [1e9, "B", 2],
+  [1e6, "M", 1],
+  [1e3, "K", 0],
+];
+
+/** A magnitude in the largest unit it fills, never as a thousand of a smaller one. */
+function scaled(magnitude: number): string {
+  for (let index = 0; index < UNITS.length; index += 1) {
+    const [scale, suffix, digits] = UNITS[index]!;
+    if (magnitude < scale) continue;
+    const size = magnitude / scale;
+    if (Number(size.toFixed(digits)) >= 1000 && index > 0) {
+      const [bigger, bigSuffix, bigDigits] = UNITS[index - 1]!;
+      return `${(magnitude / bigger).toFixed(bigDigits)}${bigSuffix}`;
+    }
+    return `${size.toFixed(digits)}${suffix}`;
+  }
+  return Math.round(magnitude).toLocaleString("en-US");
 }
 
 export function dollars(value: number): string {
-  const magnitude = Math.abs(value);
-  if (magnitude >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
-  if (magnitude >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
-  if (magnitude >= 1e3) return `$${Math.round(value / 1e3)}K`;
-  return `$${Math.round(value)}`;
+  // The sign belongs in front of the currency, not between it and the digits.
+  return `${value < 0 ? "-" : ""}$${scaled(Math.abs(value))}`;
 }
 
 export function signedPercent(value: number): string {

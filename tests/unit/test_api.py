@@ -230,8 +230,10 @@ def test_a_house_trade_past_45_days_says_how_late_it_is() -> None:
 
     assert event.actor == "Rep. Tom Villareal"
     assert event.lag_days == 76
-    assert event.late_days == 31
-    assert event.due_on == dt.date(2026, 8, 16)
+    # Bought 2 July, so the 45th day is Sunday 16 August and the report is due on
+    # the Monday. Counting to the Sunday would call them a day later than they are.
+    assert event.due_on == dt.date(2026, 8, 17)
+    assert event.late_days == 30
     assert event.size == "$100,001 to $250,000"
     assert event.value_usd is None  # a bracket is never summed as an amount
 
@@ -870,3 +872,29 @@ def test_data_health_says_how_much_of_what_was_disclosed_can_be_priced(
     assert found["refused_total"] == 2
     assert {row["symbol"] for row in found["refused"]} == {"BOGUS", "NOTATICKER"}
     assert found["refused"][0]["attempts"] == 1
+
+
+def test_a_figure_is_shown_in_the_unit_it_fills_and_keeps_its_sign() -> None:
+    """$999,999,999 is a billion dollars, not $1000.00M, and a negative is not
+    written $-1.23M. Both reached the screen: contract totals go negative."""
+    from quantlab.api.events import count, money
+
+    assert money(999_999_999) == "$1.00B"
+    assert money(999_999) == "$1.00M"
+    assert money(-1_234_567) == "-$1.23M"
+    assert money(495_600) == "$496K"
+    assert money(999) == "$999"
+    assert money(0) == "$0"
+    assert count(2_900_000) == "2.9M"
+    assert count(999_999) == "999,999"
+
+
+def test_a_deadline_never_falls_on_a_day_nobody_can_file() -> None:
+    """The page cannot say "the deadline was Sunday" and then call a Monday filing
+    late. Both the date shown and the judgement come from the same rolled date."""
+    from quantlab.api.events import due_after
+
+    assert due_after(dt.date(2026, 7, 2), 45) == dt.date(2026, 8, 17)  # 45th is a Sunday
+    assert due_after(dt.date(2026, 6, 30), 45) == dt.date(2026, 8, 14)  # a Friday: unchanged
+    # 45 days past 31 Dec 2025 is Saturday 14 Feb; the Monday is Presidents' Day.
+    assert due_after(dt.date(2025, 12, 31), 45) == dt.date(2026, 2, 17)

@@ -38,6 +38,9 @@ describe("the last day quarterly fund holdings were due", () => {
 describe("numbers", () => {
   it("abbreviates without inventing precision", () => {
     expect(dollars(646_480_000)).toBe("$646.5M");
+    // A figure shows in the unit it fills, and a negative keeps its sign in front.
+    expect(dollars(999_999_999)).toBe("$1.00B");
+    expect(dollars(-1_234_567)).toBe("-$1.2M");
     expect(dollars(495_600)).toBe("$496K");
     expect(dollars(1_310_000_000)).toBe("$1.31B");
     expect(shares(227_917_808)).toBe("227.9M");

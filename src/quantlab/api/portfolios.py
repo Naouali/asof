@@ -43,7 +43,7 @@ from typing import Any
 
 import polars as pl
 
-from quantlab.api.analytics import _close_on, _closes
+from quantlab.api.analytics import _close_from, _close_on, _closes
 from quantlab.api.events import _OWNER_NOTES, _seat, eastern_date, member_id, member_name
 from quantlab.api.queries import Lens
 
@@ -220,7 +220,11 @@ def portfolio(lens: Lens, actor_id: str) -> dict[str, Any] | None:
             {
                 "ticker": position.ticker,
                 "asset": position.asset,
-                "weight_pct": round(position.mid / total * 100, 1) if total else 0.0,
+                # Not rounded for display here: a member with six hundred holdings
+                # has hundreds below 0.05%, and rounding each to a tenth of a
+                # percent threw away five percent of the portfolio. The interface
+                # rounds what it prints; the ring needs the real shares to add up.
+                "weight_pct": round(position.mid / total * 100, 6) if total else 0.0,
                 "mid_usd": position.mid,
                 "low_usd": position.low,
                 "high_usd": position.high,
@@ -327,9 +331,12 @@ def _replay(
     points: list[tuple[dt.date, float]] = []
     for day in days:
         while cursor < len(moves) and moves[cursor][0] <= day:
-            _, _, ticker, trade = moves[cursor]
+            when, _, ticker, trade = moves[cursor]
             cursor += 1
-            price = _close_on(series[ticker], moves[cursor - 1][0])
+            # Filled at the first price available on or after the day, never the
+            # last one before it: on a Saturday disclosure that would be Friday's
+            # close, a price that existed before the news did.
+            price = _close_from(series[ticker], when)
             if not price:
                 continue
             if trade.kind == "purchase":
@@ -403,7 +410,7 @@ def _weighted_return(
         return None
     gained = weight = 0.0
     for traded, public, low, high in position.bought:
-        entry = _close_on(series, traded if by == "traded" else public)
+        entry = _close_from(series, traded if by == "traded" else public)
         if not entry:
             continue
         size = (low + high) / 2

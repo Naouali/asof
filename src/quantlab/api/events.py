@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 
-from quantlab.data.calendars import is_federal_workday
+from quantlab.data.calendars import is_federal_workday, next_federal_workday
 from quantlab.data.sources.usaspending import DEFENSE_EMBARGO
 
 __all__ = [
@@ -37,6 +37,7 @@ __all__ = [
     "congress_events",
     "contract_events",
     "display_name",
+    "due_after",
     "fund_events",
     "insider_events",
     "member_name",
@@ -185,22 +186,47 @@ def member_id(name: str, district: str | None) -> str:
     return f"congress:{(district or '').lower()}:{name.lower()}"
 
 
+#: Scale, suffix and decimals, largest first.
+_UNITS = ((1e9, "B", 2), (1e6, "M", 2), (1e3, "K", 0))
+
+
+def _scaled(magnitude: float, units: tuple[tuple[float, str, int], ...]) -> str:
+    """A magnitude in the largest unit it fills, never as a thousand of a smaller
+    one: $999,999,999 is a billion dollars, not $1000.00M."""
+    for index, (scale, suffix, digits) in enumerate(units):
+        if magnitude < scale:
+            continue
+        if round(magnitude / scale, digits) >= 1000 and index > 0:
+            bigger, big_suffix, big_digits = units[index - 1]
+            return f"{magnitude / bigger:,.{big_digits}f}{big_suffix}"
+        return f"{magnitude / scale:,.{digits}f}{suffix}"
+    return f"{magnitude:,.0f}"
+
+
 def money(value: float) -> str:
-    magnitude = abs(value)
-    if magnitude >= 1e9:
-        return f"${value / 1e9:.2f}B"
-    if magnitude >= 1e6:
-        return f"${value / 1e6:.2f}M"
-    if magnitude >= 1e3:
-        return f"${value / 1e3:.0f}K"
-    return f"${value:,.0f}"
+    # The sign belongs in front of the currency, not between it and the digits.
+    sign = "-" if value < 0 else ""
+    return f"{sign}${_scaled(abs(value), _UNITS)}"
+
+
+#: Share counts read better with one decimal: "2.9M shares", not "2.90M shares".
+_SHARE_UNITS = ((1e9, "B", 1), (1e6, "M", 1))
 
 
 def count(value: float) -> str:
-    magnitude = abs(value)
-    if magnitude >= 1e6:
-        return f"{value / 1e6:.1f}M"
-    return f"{value:,.0f}"
+    sign = "-" if value < 0 else ""
+    return f"{sign}{_scaled(abs(value), _SHARE_UNITS)}"
+
+
+def due_after(start: dt.date, days: int) -> dt.date:
+    """The day a report filed ``days`` calendar days after ``start`` is due.
+
+    A deadline that lands on a weekend or a federal holiday moves to the next
+    working day. Both the date shown to a reader and the judgement of lateness
+    come from here, so the page cannot say "the deadline was Sunday" and then
+    call a Monday filing late.
+    """
+    return next_federal_workday(start + dt.timedelta(days=days))
 
 
 def add_business_days(start: dt.date, days: int) -> dt.date:
@@ -395,8 +421,8 @@ def congress_events(frame: pl.DataFrame) -> list[Event]:
                 disclosed_at=disclosed_at,
                 lag_days=lag,
                 deadline_days=CONGRESS_DEADLINE_DAYS,
-                due_on=traded + dt.timedelta(days=CONGRESS_DEADLINE_DAYS),
-                late_days=max(0, lag - CONGRESS_DEADLINE_DAYS),
+                due_on=(due := due_after(traded, CONGRESS_DEADLINE_DAYS)),
+                late_days=max(0, (disclosed - due).days),
                 noise=False,
                 source_url=row["url"],
             )
@@ -543,7 +569,10 @@ def _changes(
     traded = period.date()
     # Lateness belongs to the fund's original report, not to a position that a
     # later amendment added: holding one back under confidential treatment is legal.
-    filed_late = max(0, (eastern_date(original) - traded).days - FUND_DEADLINE_DAYS - 3)
+    # Lateness is judged against the day the report was actually due, weekends and
+    # federal holidays included, not against a flat count of calendar days.
+    due = due_after(traded, FUND_DEADLINE_DAYS)
+    filed_late = max(0, (eastern_date(original) - due).days)
 
     rows: list[tuple[float, Event]] = []
     for row in joined.iter_rows(named=True):
@@ -593,8 +622,8 @@ def _changes(
                     disclosed_at=disclosed_at,
                     lag_days=lag,
                     deadline_days=FUND_DEADLINE_DAYS,
-                    due_on=traded + dt.timedelta(days=FUND_DEADLINE_DAYS),
-                    late_days=filed_late,  # three days of grace: weekends move the due date
+                    due_on=due,
+                    late_days=filed_late,
                     noise=False,
                     source_url=f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={manager}&type=13F",
                 ),

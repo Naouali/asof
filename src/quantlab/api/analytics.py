@@ -20,7 +20,7 @@ revenue, and nothing here calls it that.
 from __future__ import annotations
 
 import datetime as dt
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from statistics import median, quantiles
 from typing import Any
@@ -136,10 +136,35 @@ def _closes(
 
 
 def _close_on(series: tuple[list[dt.date], list[float]], day: dt.date) -> float | None:
-    """The last close on or before ``day``."""
+    """The last close on or before ``day``: what a holding was worth THEN.
+
+    Use this to value or to measure. To buy, use :func:`_close_from`: the last
+    close before a day is a price that had already happened when the news broke,
+    and entering at it is peeking.
+    """
     days, closes = series
     index = bisect_right(days, day)
     return closes[index - 1] if index else None
+
+
+def _close_from(series: tuple[list[dt.date], list[float]], day: dt.date) -> float | None:
+    """The first close on or after ``day``: the first price anyone acting on that
+    day's news could actually have paid."""
+    days, closes = series
+    index = bisect_left(days, day)
+    return closes[index] if index < len(days) else None
+
+
+def _bar_index(
+    series: tuple[list[dt.date], list[float]], day: dt.date, *, after: bool
+) -> int | None:
+    """Where in the series a price came from, so an exit cannot precede its entry."""
+    days, _ = series
+    if after:
+        index = bisect_left(days, day)
+        return index if index < len(days) else None
+    index = bisect_right(days, day)
+    return index - 1 if index else None
 
 
 def _spread(values: list[float]) -> dict[str, Any]:

@@ -372,7 +372,11 @@ def _contracts(
 def _defense_share(frame: pl.DataFrame, since: dt.date) -> float | None:
     """The share of money committed that came from the Pentagon, which is the share
     of this page that is three months old before anyone can read it."""
-    recent = frame.filter((pl.col("known_at").dt.date() > since) & (pl.col("obligation_usd") > 0))
+    # Washington dates, as everywhere else in this app: a contract published at
+    # 20:00 in Washington is stamped the next day in UTC, and 13,438 of the lake's
+    # rows fall on a different day under the two readings.
+    public_on = pl.col("known_at").dt.convert_time_zone("America/New_York").dt.date()
+    recent = frame.filter((public_on > since) & (pl.col("obligation_usd") > 0))
     total = float(recent["obligation_usd"].sum()) if recent.height else 0.0
     if total <= 0:
         return None

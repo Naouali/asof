@@ -26,8 +26,10 @@ NOW = at(2026, 9, 18, 23)
 
 
 def _prices(symbol: str, closes: dict[dt.datetime, float]) -> pl.DataFrame:
+    """Bars as the fetcher stores them: a close is knowable AT the close, and its
+    `as_of` is stamped 21:00 UTC, which is the same day in Washington."""
     rows = [
-        {"symbol": symbol, "as_of": day, "known_at": day + dt.timedelta(hours=21), "close": close}
+        {"symbol": symbol, "as_of": day, "known_at": day, "close": close}
         for day, close in closes.items()
     ]
     return frame("ohlcv_daily", "yahoo", rows)
@@ -383,3 +385,93 @@ def test_the_api_serves_the_track_record(store: Store, settings: Settings, tmp_p
     body = found.json()
     assert body["benchmark"] == "SPY" and body["horizon_days"] == 30
     assert body["people"][0]["mean_excess_pct"] == 8.0
+
+
+# ------------------------------------------- what the arithmetic must not do --
+def test_a_hole_in_the_history_cannot_produce_a_backwards_return(store: Store) -> None:
+    """With a gap around the holding window, the entry can be answered from a bar
+    years later and the exit from one years earlier. That returned a confident
+    number with its sign reversed; now it returns nothing."""
+    store.write(frame("congress_trades", "house_clerk", [_spring()]), asset_class="equity")
+    # Public 16 April, so the window runs to 16 May -- and the ticker has no bar
+    # between 5 March and 1 June. The entry can only be answered from after the
+    # window, the exit only from before it.
+    store.write(
+        _prices("OSPR", {at(2026, 3, 5, 21): 100.0, at(2026, 6, 1, 21): 200.0}),
+        asset_class="equity",
+    )
+    _bench(
+        store,
+        {at(2026, 3, 5, 21): 100.0, at(2026, 4, 16, 21): 100.0,
+         at(2026, 5, 16, 21): 100.0, at(2026, 6, 1, 21): 100.0},
+    )  # fmt: skip
+
+    found = track_record.records(Lens(store, at(2026, 6, 10, 23)), horizon=30, min_trades=1)
+
+    assert found["measured"] == 0 and found["unpriced"] == 1
+
+
+def test_a_follower_cannot_buy_at_a_price_from_before_the_news(store: Store) -> None:
+    """A disclosure on a day the market was shut must fill at the next close, not
+    the last one: that price existed before anybody knew."""
+    filed = at(2026, 4, 18, 3, 59)  # 23:59 on Friday the 17th, in Washington
+    store.write(
+        frame(
+            "congress_trades", "house_clerk", [congress_line(as_of=at(2026, 3, 2), known_at=filed)]
+        ),
+        asset_class="equity",
+    )
+    # Public Friday 17 April, a day with no bar. Thursday closed at 50, Monday at
+    # 100: filling at Thursday's price would be buying before the news existed.
+    store.write(
+        _prices("OSPR", {BOUGHT: 100.0, at(2026, 4, 16, 21): 50.0, at(2026, 4, 20, 21): 100.0,
+                         at(2026, 5, 15, 21): 110.0}),
+        asset_class="equity",
+    )  # fmt: skip
+    _bench(store, {BOUGHT: 100.0, at(2026, 4, 16, 21): 100.0, at(2026, 4, 20, 21): 100.0,
+                   at(2026, 5, 15, 21): 100.0})  # fmt: skip
+
+    found = track_record.records(Lens(store, at(2026, 5, 25, 23)), horizon=30, min_trades=1)
+
+    # In at Monday's 100 for +10%, not at the previous Thursday's 50 for +120%.
+    assert found["people"][0]["mean_excess_pct"] == 10.0
+
+
+def test_the_interval_widens_for_a_small_sample() -> None:
+    """A mean of ten trades is not a normal distribution. Using 1.96 there makes
+    the interval a seventh too narrow, which turns luck into a filer who stands out."""
+    values = [8.0, -2.0, 12.0, 3.0, -1.0, 9.0, 4.0, 1.0, 7.0, 2.0]
+    spread = track_record._spread(values)
+
+    assert spread["trades"] == 10
+    assert spread["mean_excess_pct"] == 4.3
+    # t(9) = 2.262, not 1.96: the interval is wider than a normal would give.
+    assert spread["low_pct"] == 1.03 and spread["high_pct"] == 7.57
+
+
+def test_one_trade_can_never_be_told_from_luck() -> None:
+    spread = track_record._spread([42.0])
+    assert spread["low_pct"] is None and spread["distinguishable"] is False
+
+
+def test_the_shuffle_never_claims_impossibility() -> None:
+    """Four hundred shuffles that never match the leader show it is rare, not
+    that chance could not do it. A bare zero would claim the second."""
+    measured = [
+        track_record._Measured(
+            actor_id="a" if index < 12 else "b",
+            actor="A" if index < 12 else "B",
+            role=None,
+            ticker="X",
+            traded_on=dt.date(2026, 3, 2),
+            public_on=dt.date(2026, 4, 16),
+            # One filer is better than the other by a mile, every single trade.
+            excess_pct=100.0 if index < 12 else -100.0,
+            own_excess_pct=None,
+        )
+        for index in range(24)
+    ]
+    luck = track_record._luck(measured, min_trades=10)
+
+    assert luck is not None
+    assert 0 < luck["as_good_by_chance"] <= 1 / (track_record.SHUFFLES + 1) + 1e-9

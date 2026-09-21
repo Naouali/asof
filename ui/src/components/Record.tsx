@@ -120,7 +120,11 @@ export function RecordPane({ event, onActorPage = false }: { event: DisclosureEv
   }
 
   const contract = event.kind === "contract";
-  const status = event.due_on === null ? "No deadline applies" : event.late_days > 0 ? `${plural(event.late_days, "day")} late` : "On time";
+  // A fund's report can be on time while one of its positions surfaces months
+  // later: the position was held back, not the report. Saying only "on time"
+  // beside a deadline three months before the disclosure reads as an error.
+  const surfacedLate = event.kind === "fund" && event.late_days === 0 && event.due_on !== null && event.disclosed_on > event.due_on;
+  const status = event.due_on === null ? "No deadline applies" : event.late_days > 0 ? `${plural(event.late_days, "day")} late` : surfacedLate ? "The report was on time" : "On time";
   const facts = [
     { label: contract ? "This action" : "Size", value: event.value_usd !== null ? dollars(event.value_usd) : event.kind === "congress" ? "Range only" : "Not stated" },
     { label: contract ? "Action to publication" : "Trade to disclosure", value: plural(event.lag_days, "day") },
@@ -138,6 +142,7 @@ export function RecordPane({ event, onActorPage = false }: { event: DisclosureEv
         {[standing(event), event.detail?.replace(/\.$/, "")].filter(Boolean).join(". ")}
         {event.role || event.detail ? "." : ""}
         {event.kind === "congress" && " The law asks for a range, not an amount, so the exact size is not known."}
+        {surfacedLate && " The fund's report for this quarter was filed on time; this position only appeared in a later one, which the law allows."}
         {contract && " The figure is what this one action committed, to be spent over the life of the contract. It is not revenue, and the market usually knew."}
         {event.noise && " This is routine: it is hidden from the feed unless you ask for grants, option exercises and pre-scheduled sales."}
       </p>

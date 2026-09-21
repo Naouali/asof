@@ -34,12 +34,11 @@ from __future__ import annotations
 import datetime as dt
 import random
 import statistics as stats
-from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any
 
-from quantlab.api.analytics import _closes
+from quantlab.api.analytics import _bar_index, _closes
 from quantlab.api.events import eastern_date
 from quantlab.api.portfolios import OPTION_TYPES, _identity, _trades
 from quantlab.api.queries import Lens
@@ -92,21 +91,49 @@ def _excess(
     """
     exit_on = entry + dt.timedelta(days=horizon)
 
-    def at_entry(series: tuple[list[dt.date], list[float]]) -> float | None:
-        days, closes = series
-        index = bisect_left(days, entry)
-        return closes[index] if index < len(days) else None
+    def leg(series: tuple[list[dt.date], list[float]]) -> tuple[float, float] | None:
+        """The price paid on the way in and taken on the way out, in that order.
 
-    def at_exit(series: tuple[list[dt.date], list[float]]) -> float | None:
-        days, closes = series
-        index = bisect_right(days, exit_on)
-        return closes[index - 1] if index else None
+        A history with a hole in it can otherwise answer both ends from the wrong
+        side of the gap -- the entry from a bar years later, the exit from one
+        years earlier -- and return a confident, backwards number.
+        """
+        _, closes = series
+        start = _bar_index(series, entry, after=True)
+        finish = _bar_index(series, exit_on, after=False)
+        if start is None or finish is None or finish < start:
+            return None
+        return closes[start], closes[finish]
 
-    bought, sold = at_entry(prices), at_exit(prices)
-    base, benched = at_entry(bench), at_exit(bench)
-    if not bought or not sold or not base or not benched:
+    held, index = leg(prices), leg(bench)
+    if held is None or index is None:
+        return None
+    bought, sold = held
+    base, benched = index
+    if not bought or not base:
         return None
     return (sold / bought - 1) * 100 - (benched / base - 1) * 100
+
+
+#: Two-sided 95% points of Student's t, by degrees of freedom. A mean of ten
+#: trades is not a normal distribution: using 1.96 there makes the interval a
+#: seventh too narrow, which turns luck into a filer who "stands out".
+_T95 = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
+    8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145,
+    15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086, 21: 2.080,
+    22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060, 26: 2.056, 27: 2.052, 28: 2.048,
+    29: 2.045, 30: 2.042, 40: 2.021, 50: 2.009, 60: 2.000, 80: 1.990, 100: 1.984,
+    120: 1.980,
+}  # fmt: skip
+
+
+def _t95(df: int) -> float:
+    """The multiplier for a 95% interval on a mean of ``df + 1`` values."""
+    if df in _T95:
+        return _T95[df]
+    smaller = [key for key in _T95 if key < df]
+    return _T95[max(smaller)] if smaller and df < max(_T95) else 1.96
 
 
 def _spread(values: list[float]) -> dict[str, Any]:
@@ -115,7 +142,7 @@ def _spread(values: list[float]) -> dict[str, Any]:
     mean = stats.fmean(values)
     # The spread of the mean itself: with a handful of trades it is wide enough to
     # swallow the mean, and saying so is the point.
-    error = 1.96 * stats.stdev(values) / count**0.5 if count > 1 else float("inf")
+    error = _t95(count - 1) * stats.stdev(values) / count**0.5 if count > 1 else float("inf")
     return {
         "trades": count,
         "mean_excess_pct": round(mean, 2),
@@ -269,9 +296,9 @@ def _luck(measured: list[_Measured], min_trades: int) -> dict[str, Any] | None:
     return {
         "best_mean_excess_pct": round(real, 2),
         "shuffles": SHUFFLES,
-        #: The share of shuffles in which chance produced a leader at least this
-        #: good. Near 1 means the leader board is noise.
-        "as_good_by_chance": round(beaten / SHUFFLES, 3),
+        # (beaten + 1) / (shuffles + 1), never a bare zero: four hundred shuffles
+        # that never matched the leader show it is rare, not that it is impossible.
+        "as_good_by_chance": round((beaten + 1) / (SHUFFLES + 1), 3),
     }
 
 
