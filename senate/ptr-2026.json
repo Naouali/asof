@@ -20047,6 +20047,32 @@
      "comment": "All transactions notified to Filer on September 1, 2026"
     }
    ]
+  },
+  {
+   "report_id": "028aef33-dc0d-44a1-992f-aa35ee42685b",
+   "first_name": "A. Mitchell",
+   "last_name": "McConnell, Jr.",
+   "office": "McConnell, A. Mitchell Jr. (Senator)",
+   "title": "Periodic Transaction Report for 09/21/2026",
+   "filed": "2026-09-21",
+   "url": "https://efdsearch.senate.gov/search/view/ptr/028aef33-dc0d-44a1-992f-aa35ee42685b/",
+   "paper": false,
+   "first_seen_at": "2026-09-22T09:38:33+00:00",
+   "filed_at": "2026-09-21T18:52:00+00:00",
+   "declared": 1,
+   "rows": [
+    {
+     "line": "1",
+     "date": "09/01/2026",
+     "owner": "Spouse",
+     "ticker": "WFC",
+     "asset": "Wells Fargo & Company Common Stock",
+     "asset_type": "Stock",
+     "type": "Purchase",
+     "amount": "$15,001 - $50,000",
+     "comment": "Dividend reinvestment"
+    }
+   ]
   }
  ]
 }
