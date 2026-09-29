@@ -20073,6 +20073,410 @@
      "comment": "Dividend reinvestment"
     }
    ]
+  },
+  {
+   "report_id": "0a93a20c-2a0f-4979-80ca-cc2f61297527",
+   "first_name": "James Conley",
+   "last_name": "Justice, II",
+   "office": "Justice II, James Conley (Senator)",
+   "title": "Periodic Transaction Report for 09/28/2026",
+   "filed": "2026-09-28",
+   "url": "https://efdsearch.senate.gov/search/view/ptr/0a93a20c-2a0f-4979-80ca-cc2f61297527/",
+   "paper": false,
+   "first_seen_at": "2026-09-29T11:07:55+00:00",
+   "filed_at": "2026-09-28T18:13:00+00:00",
+   "declared": 1,
+   "rows": [
+    {
+     "line": "1",
+     "date": "08/14/2026",
+     "owner": "Self",
+     "ticker": "--",
+     "asset": "Greenbrier Hotel Corporation and Affiliates Company: Greenbrier Hotel Corporation and Affiliates (White Sulphur Springs, WV) Description: Hospitality",
+     "asset_type": "Non-Public Stock",
+     "type": "Sale (Partial)",
+     "amount": "Over $50,000,000",
+     "comment": "--"
+    }
+   ]
+  },
+  {
+   "report_id": "9e2ff733-aeac-4ce8-872c-3d6b7913da88",
+   "first_name": "Richard",
+   "last_name": "Blumenthal",
+   "office": "Blumenthal, Richard (Senator)",
+   "title": "Periodic Transaction Report for 09/28/2026",
+   "filed": "2026-09-28",
+   "url": "https://efdsearch.senate.gov/search/view/ptr/9e2ff733-aeac-4ce8-872c-3d6b7913da88/",
+   "paper": false,
+   "first_seen_at": "2026-09-29T11:07:55+00:00",
+   "filed_at": "2026-09-28T13:27:00+00:00",
+   "declared": 33,
+   "rows": [
+    {
+     "line": "33",
+     "date": "09/11/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Not Fade Away LLC Company: Not Fade Away LLC (New York, NY) Description: Hedge Fund",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of Other One LLC"
+    },
+    {
+     "line": "32",
+     "date": "09/11/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Not Fade Away LLC Company: Not Fade Away LLC (New York, NY) Description: Hedge Fund",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$15,001 - $50,000",
+     "comment": "Underlying Asset of Hedge Holdings LLC"
+    },
+    {
+     "line": "31",
+     "date": "09/11/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Not Fade Away LLC Company: Not Fade Away LLC (New York, NY) Description: Hedge Fund",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$50,001 - $100,000",
+     "comment": "Underlying Asset of Summa I LLC"
+    },
+    {
+     "line": "30",
+     "date": "09/11/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Not Fade Away LLC Company: Not Fade Away LLC (New York, NY) Description: Hedge Fund",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$50,001 - $100,000",
+     "comment": "Underlying Asset of LarryMae Partners LLC"
+    },
+    {
+     "line": "29",
+     "date": "09/11/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Not Fade Away LLC Company: Not Fade Away LLC (New York, NY) Description: Hedge Fund",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of 3M's Partners LLC"
+    },
+    {
+     "line": "28",
+     "date": "09/11/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Not Fade Away LLC Company: Not Fade Away LLC (New York, NY) Description: Hedge Fund",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$15,001 - $50,000",
+     "comment": "Underlying asset of 3M's Partners LLC, owned through Peter L. Malkin Family 9 LLC"
+    },
+    {
+     "line": "27",
+     "date": "09/11/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Not Fade Away LLC Company: Not Fade Away LLC (New York, NY) Description: Hedge Fund",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 2000 LLC"
+    },
+    {
+     "line": "26",
+     "date": "09/11/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Not Fade Away LLC Company: Not Fade Away LLC (New York, NY) Description: Hedge Fund",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 9 LLC"
+    },
+    {
+     "line": "25",
+     "date": "08/27/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Days Between LLC Company: Days Between LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$15,001 - $50,000",
+     "comment": "Underlying Asset of New Things Partners LLC"
+    },
+    {
+     "line": "24",
+     "date": "08/27/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Days Between LLC Company: Days Between LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "Underlying Asset of Summa I LLC"
+    },
+    {
+     "line": "23",
+     "date": "08/27/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 2000 LLC"
+    },
+    {
+     "line": "22",
+     "date": "08/27/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "Days Between LLC Company: Days Between LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$100,001 - $250,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 2000 LLC"
+    },
+    {
+     "line": "21",
+     "date": "08/27/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 9 LLC"
+    },
+    {
+     "line": "20",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of New Things Partners LLC"
+    },
+    {
+     "line": "19",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of Other One LLC"
+    },
+    {
+     "line": "18",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of Hedge Holdings LLC"
+    },
+    {
+     "line": "17",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of Summa I LLC"
+    },
+    {
+     "line": "16",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$15,001 - $50,000",
+     "comment": "Underlying Asset of LarryMae Partners LLC"
+    },
+    {
+     "line": "15",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying asset of 3M's Partners LLC"
+    },
+    {
+     "line": "14",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying asset of 3M's Partners LLC, owned through Peter L. Malkin Family 9 LLC"
+    },
+    {
+     "line": "13",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 2000 LLC"
+    },
+    {
+     "line": "12",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$50,001 - $100,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 2000 LLC"
+    },
+    {
+     "line": "11",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$15,001 - $50,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 9 LLC"
+    },
+    {
+     "line": "10",
+     "date": "08/24/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 9 LLC"
+    },
+    {
+     "line": "9",
+     "date": "08/19/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Sale (Partial)",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of New Things Partners LLC"
+    },
+    {
+     "line": "8",
+     "date": "08/19/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Sale (Partial)",
+     "amount": "$15,001 - $50,000",
+     "comment": "Underlying Asset of Other One LLC"
+    },
+    {
+     "line": "7",
+     "date": "08/19/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Sale (Partial)",
+     "amount": "$15,001 - $50,000",
+     "comment": "Underlying Asset of Hedge Holdings LLC"
+    },
+    {
+     "line": "6",
+     "date": "08/19/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Sale (Partial)",
+     "amount": "$50,001 - $100,000",
+     "comment": "Underlying Asset of Summa I LLC"
+    },
+    {
+     "line": "5",
+     "date": "08/19/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Sale (Partial)",
+     "amount": "$50,001 - $100,000",
+     "comment": "Underlying Asset of LarryMae Partners LLC"
+    },
+    {
+     "line": "4",
+     "date": "08/19/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Sale (Partial)",
+     "amount": "$1,001 - $15,000",
+     "comment": "Underlying Asset of 3M's Partners LLC"
+    },
+    {
+     "line": "3",
+     "date": "08/19/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Sale (Partial)",
+     "amount": "$15,001 - $50,000",
+     "comment": "Underlying asset of 3M's Partners LLC, owned through Peter L. Malkin Family 9 LLC"
+    },
+    {
+     "line": "2",
+     "date": "08/19/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Sale (Partial)",
+     "amount": "$250,001 - $500,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 2000 LLC"
+    },
+    {
+     "line": "1",
+     "date": "08/19/2026",
+     "owner": "Spouse",
+     "ticker": "--",
+     "asset": "MH Built to Last LLC Company: MH Built to Last LLC (New York, NY) Description: Partnership",
+     "asset_type": "Other",
+     "type": "Sale (Partial)",
+     "amount": "$100,001 - $250,000",
+     "comment": "Underlying Asset of Peter L. Malkin Family 9 LLC"
+    }
+   ]
   }
  ]
 }
