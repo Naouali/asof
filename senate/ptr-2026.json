@@ -20477,6 +20477,76 @@
      "comment": "Underlying Asset of Peter L. Malkin Family 9 LLC"
     }
    ]
+  },
+  {
+   "report_id": "6bf3b6f7-9e1b-499a-bd5a-990292ce2e72",
+   "first_name": "Sheldon",
+   "last_name": "Whitehouse",
+   "office": "Whitehouse, Sheldon (Senator)",
+   "title": "Periodic Transaction Report for 10/01/2026",
+   "filed": "2026-10-01",
+   "url": "https://efdsearch.senate.gov/search/view/ptr/6bf3b6f7-9e1b-499a-bd5a-990292ce2e72/",
+   "paper": false,
+   "first_seen_at": "2026-10-02T10:53:32+00:00",
+   "filed_at": "2026-10-01T19:04:00+00:00",
+   "declared": 5,
+   "rows": [
+    {
+     "line": "5",
+     "date": "09/04/2026",
+     "owner": "Spouse",
+     "ticker": "JPM",
+     "asset": "JP Morgan Chase & Co. Common Stock",
+     "asset_type": "Stock",
+     "type": "Sale (Partial)",
+     "amount": "$15,001 - $50,000",
+     "comment": "--"
+    },
+    {
+     "line": "4",
+     "date": "09/04/2026",
+     "owner": "Spouse",
+     "ticker": "ADI",
+     "asset": "Analog Devices, Inc. - Common Stock",
+     "asset_type": "Stock",
+     "type": "Sale (Partial)",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    },
+    {
+     "line": "3",
+     "date": "09/04/2026",
+     "owner": "Spouse",
+     "ticker": "V",
+     "asset": "Visa Inc.",
+     "asset_type": "Stock",
+     "type": "Sale (Partial)",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    },
+    {
+     "line": "2",
+     "date": "09/04/2026",
+     "owner": "Self",
+     "ticker": "V",
+     "asset": "Visa Inc.",
+     "asset_type": "Stock",
+     "type": "Sale (Partial)",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    },
+    {
+     "line": "1",
+     "date": "09/04/2026",
+     "owner": "Self",
+     "ticker": "JPM",
+     "asset": "JP Morgan Chase & Co. Common Stock",
+     "asset_type": "Stock",
+     "type": "Sale (Partial)",
+     "amount": "$15,001 - $50,000",
+     "comment": "--"
+    }
+   ]
   }
  ]
 }
