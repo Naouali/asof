@@ -20547,6 +20547,43 @@
      "comment": "--"
     }
    ]
+  },
+  {
+   "report_id": "0541be4f-4f96-4d84-8d6f-d349f218bb2a",
+   "first_name": "John",
+   "last_name": "Fetterman",
+   "office": "Fetterman, John (Senator)",
+   "title": "Periodic Transaction Report for 10/07/2026",
+   "filed": "2026-10-07",
+   "url": "https://efdsearch.senate.gov/search/view/ptr/0541be4f-4f96-4d84-8d6f-d349f218bb2a/",
+   "paper": false,
+   "first_seen_at": "2026-10-08T11:47:16+00:00",
+   "filed_at": "2026-10-07T22:13:00+00:00",
+   "declared": 2,
+   "rows": [
+    {
+     "line": "2",
+     "date": "09/16/2026",
+     "owner": "Child",
+     "ticker": "--",
+     "asset": "DELL INTL LLC/EMC CORP Rate/Coupon: 5.6% Matures: 2033-09-15",
+     "asset_type": "Corporate Bond",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    },
+    {
+     "line": "1",
+     "date": "09/15/2026",
+     "owner": "Child",
+     "ticker": "--",
+     "asset": "DELL INTL LLC/EMC CORP Rate/Coupon: 5.6% Matures: 2033-09-15",
+     "asset_type": "Corporate Bond",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    }
+   ]
   }
  ]
 }
