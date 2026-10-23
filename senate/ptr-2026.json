@@ -20801,6 +20801,32 @@
      "comment": "--"
     }
    ]
+  },
+  {
+   "report_id": "6aa5ccb2-ff27-491a-9314-778b9ab37964",
+   "first_name": "Alan",
+   "last_name": "Armstrong",
+   "office": "Armstrong, Alan (Senator)",
+   "title": "Periodic Transaction Report for 10/23/2026",
+   "filed": "2026-10-22",
+   "url": "https://efdsearch.senate.gov/search/view/ptr/6aa5ccb2-ff27-491a-9314-778b9ab37964/",
+   "paper": false,
+   "first_seen_at": "2026-10-23T09:45:13+00:00",
+   "filed_at": "2026-10-23T03:34:00+00:00",
+   "declared": 1,
+   "rows": [
+    {
+     "line": "1",
+     "date": "09/08/2026",
+     "owner": "Joint",
+     "ticker": "WMB",
+     "asset": "Williams Companies, Inc. (The) Common Stock Option Type: Call Strike price: $80.00 Expires: 2026-12-18",
+     "asset_type": "Stock Option",
+     "type": "Sale (Full)",
+     "amount": "$250,001 - $500,000",
+     "comment": "--"
+    }
+   ]
   }
  ]
 }
