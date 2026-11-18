@@ -21514,6 +21514,80 @@
      "comment": "--"
     }
    ]
+  },
+  {
+   "report_id": "06b7b716-bdc0-4c47-a4aa-96624e1e702c",
+   "first_name": "John",
+   "last_name": "Boozman",
+   "office": "Boozman, John (Senator)",
+   "title": "Periodic Transaction Report for 11/17/2026",
+   "filed": "2026-11-17",
+   "url": "https://efdsearch.senate.gov/search/view/ptr/06b7b716-bdc0-4c47-a4aa-96624e1e702c/",
+   "paper": false,
+   "first_seen_at": "2026-11-18T13:40:15+00:00",
+   "filed_at": "2026-11-17T18:09:00+00:00",
+   "declared": 2,
+   "rows": [
+    {
+     "line": "2",
+     "date": "10/21/2026",
+     "owner": "Joint",
+     "ticker": "HYBB",
+     "asset": "iShares BB Rated Corporate Bond ETF",
+     "asset_type": "Stock",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    },
+    {
+     "line": "1",
+     "date": "10/21/2026",
+     "owner": "Joint",
+     "ticker": "MBB",
+     "asset": "iShares MBS ETF",
+     "asset_type": "Stock",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    }
+   ]
+  },
+  {
+   "report_id": "21941188-c04d-4713-8e6f-d954918e93fd",
+   "first_name": "John",
+   "last_name": "Boozman",
+   "office": "Boozman, John (Senator)",
+   "title": "Periodic Transaction Report for 11/17/2026",
+   "filed": "2026-11-17",
+   "url": "https://efdsearch.senate.gov/search/view/ptr/21941188-c04d-4713-8e6f-d954918e93fd/",
+   "paper": false,
+   "first_seen_at": "2026-11-18T13:40:15+00:00",
+   "filed_at": "2026-11-17T18:17:00+00:00",
+   "declared": 2,
+   "rows": [
+    {
+     "line": "2",
+     "date": "10/21/2026",
+     "owner": "Joint",
+     "ticker": "CMBS",
+     "asset": "iShares CMBS ETF",
+     "asset_type": "Stock",
+     "type": "Sale (Partial)",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    },
+    {
+     "line": "1",
+     "date": "10/21/2026",
+     "owner": "Joint",
+     "ticker": "TLH",
+     "asset": "iShares 10-20 Year Treasury Bond ETF",
+     "asset_type": "Stock",
+     "type": "Sale (Partial)",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    }
+   ]
   }
  ]
 }
