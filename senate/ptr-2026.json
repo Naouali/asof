@@ -21588,6 +21588,300 @@
      "comment": "--"
     }
    ]
+  },
+  {
+   "report_id": "8f97b859-75e2-4739-8392-d375744aea97",
+   "first_name": "Alan",
+   "last_name": "Armstrong",
+   "office": "Armstrong, Alan (Senator)",
+   "title": "Periodic Transaction Report for 11/20/2026",
+   "filed": "2026-11-20",
+   "url": "https://efdsearch.senate.gov/search/view/ptr/8f97b859-75e2-4739-8392-d375744aea97/",
+   "paper": false,
+   "first_seen_at": "2026-11-21T13:14:48+00:00",
+   "filed_at": "2026-11-20T20:40:00+00:00",
+   "declared": 23,
+   "rows": [
+    {
+     "line": "23",
+     "date": "10/30/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Alabama Toll Rd Brdg & Tunl Auth Revenue Bond Rate/Coupon: 5.0% Matures: 2032-10-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    },
+    {
+     "line": "22",
+     "date": "10/29/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Illinois St General Obligation Bond Rate/Coupon: 5.0% Matures: 2029-05-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    },
+    {
+     "line": "21",
+     "date": "10/28/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Illinois St General Obligation Bond Rate/Coupon: 5.0% Matures: 2031-02-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$1,001 - $15,000",
+     "comment": "--"
+    },
+    {
+     "line": "20",
+     "date": "10/26/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Indiana St Fin Auth Revenue Bond Rate/Coupon: 5.0% Matures: 2035-11-15",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "--"
+    },
+    {
+     "line": "19",
+     "date": "10/22/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Idaho St Tax Revenue Bond Rate/Coupon: 4.0% Matures: 2027-06-30",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$500,001 - $1,000,000",
+     "comment": "--"
+    },
+    {
+     "line": "18",
+     "date": "10/21/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Barbers Hill TX Independent Sch Revenue Bond Rate/Coupon: 5.0% Matures: 2027-02-15",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$100,001 - $250,000",
+     "comment": "--"
+    },
+    {
+     "line": "17",
+     "date": "10/16/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Texas Transn Commn General Obligation Mobility Bond Rate/Coupon: 5.0% Matures: 2039-10-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$500,001 - $1,000,000",
+     "comment": "--"
+    },
+    {
+     "line": "16",
+     "date": "10/15/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "New Jersey Economic Dev Auth Revenue Bond Rate/Coupon: 5.0% Matures: 2032-06-15",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "--"
+    },
+    {
+     "line": "15",
+     "date": "10/14/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Harris Cnty Tex Cultural Ed Facs Revenue Bond Rate/Coupon: 5.0% Matures: 2033-12-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "--"
+    },
+    {
+     "line": "14",
+     "date": "10/14/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Texas Wtr Dev Brd Revenue Bond Rate/Coupon: 5.0% Matures: 2033-10-15",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "--"
+    },
+    {
+     "line": "13",
+     "date": "10/14/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Colorado Health Facs Auth Revenue Bond Rate/Coupon: 5.0% Matures: 2029-11-15",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$500,001 - $1,000,000",
+     "comment": "--"
+    },
+    {
+     "line": "12",
+     "date": "10/13/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Illinois St General Obligation Bond Rate/Coupon: 5.0% Matures: 2029-03-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "--"
+    },
+    {
+     "line": "11",
+     "date": "10/08/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Ohio St Wtr Dev Auth Revenue Bond Rate/Coupon: 5.0% Matures: 2040-12-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$500,001 - $1,000,000",
+     "comment": "--"
+    },
+    {
+     "line": "10",
+     "date": "10/07/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Connecticut St General Obligation Bond Rate/Coupon: 5.0% Matures: 2038-01-15",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$100,001 - $250,000",
+     "comment": "--"
+    },
+    {
+     "line": "9",
+     "date": "10/07/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Connecticut St General Obligation Bond Rate/Coupon: 5.25% Matures: 2039-10-15",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "--"
+    },
+    {
+     "line": "8",
+     "date": "10/07/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "New Jersey St Transntr Fd Auth Revenue Bond Rate/Coupon: 5.0% Matures: 2041-06-15",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "--"
+    },
+    {
+     "line": "7",
+     "date": "10/07/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Philadelphia PA General Obligation Bond Rate/Coupon: 5.0% Matures: 2027-10-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$100,001 - $250,000",
+     "comment": "--"
+    },
+    {
+     "line": "6",
+     "date": "10/07/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Philadelphia PA General Obligation Bond Rate/Coupon: 5.0% Matures: 2036-10-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$500,001 - $1,000,000",
+     "comment": "--"
+    },
+    {
+     "line": "5",
+     "date": "10/06/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "WBD",
+     "asset_type": "Stock",
+     "type": "Sale (Full)",
+     "amount": "$1,001 - $15,000",
+     "comment": "Non-discretionary transaction to Filer as part of Paramount acquisition of WBD"
+    },
+    {
+     "line": "4",
+     "date": "10/06/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Missouri St Hwys & Trans Commn St Rd Revenue Bond Rate/Coupon: 5.0% Matures: 2030-05-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$100,001 - $250,000",
+     "comment": "--"
+    },
+    {
+     "line": "3",
+     "date": "10/06/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "North Tex Twy Auth Revenue Bond Rate/Coupon: 5.0% Matures: 2031-01-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$100,001 - $250,000",
+     "comment": "--"
+    },
+    {
+     "line": "2",
+     "date": "10/06/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Huntsville Ala Health Care Auth Revenue Bond Rate/Coupon: 5.0% Matures: 2035-06-01",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$250,001 - $500,000",
+     "comment": "--"
+    },
+    {
+     "line": "1",
+     "date": "10/06/2026",
+     "owner": "Joint",
+     "ticker": "--",
+     "asset": "Grand Prairie Tex Indpt Sch Dist Revenue Bond Rate/Coupon: 5.0% Matures: 2031-02-15",
+     "asset_type": "Municipal Security",
+     "type": "Purchase",
+     "amount": "$500,001 - $1,000,000",
+     "comment": "--"
+    }
+   ]
+  },
+  {
+   "report_id": "f0f7eba0-ca09-4b80-a97b-64b6dafb835e",
+   "first_name": "Rafael E",
+   "last_name": "Cruz",
+   "office": "Cruz, Ted (Senator)",
+   "title": "Periodic Transaction Report for 11/20/2026",
+   "filed": "2026-11-20",
+   "url": "https://efdsearch.senate.gov/search/view/ptr/f0f7eba0-ca09-4b80-a97b-64b6dafb835e/",
+   "paper": false,
+   "first_seen_at": "2026-11-21T13:14:48+00:00",
+   "filed_at": "2026-11-20T20:22:00+00:00",
+   "declared": 1,
+   "rows": [
+    {
+     "line": "1",
+     "date": "11/11/2026",
+     "owner": "Spouse",
+     "ticker": "GS",
+     "asset": "Goldman Sachs Group, Inc. (The) Common Stock",
+     "asset_type": "Stock",
+     "type": "Sale (Partial)",
+     "amount": "$250,001 - $500,000",
+     "comment": "--"
+    }
+   ]
   }
  ]
 }
